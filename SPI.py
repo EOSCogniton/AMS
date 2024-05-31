@@ -1,19 +1,6 @@
 import time
 import spidev
 
-# We only have SPI bus 0 available to us on the Pi
-bus = 0
-
-#Device is the chip select pin. Set to 0 or 1, depending on the connections
-device = 1
-
-# Enable SPI
-spi = spidev.SpiDev()
-
-# Set SPI speed and mode
-spi.max_speed_hz = 1e6
-spi.mode = 0
-
 def XOR (a, b):
     if a != b:
         return 1
@@ -53,8 +40,6 @@ def list_binary2int(bin):
         st+=str(x)
     return int(st,2)
 
-CMD = {"STCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],"RDCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0 ]}
-
 def list_binary2hex(bin):
     n=list_binary2int(bin)
     return hex(n)
@@ -69,5 +54,20 @@ def exchange_poll(cmd):
     return spi.xfer2([list_binary2hex(msgbin),list_binary2hex(PECbin)])
 
 if __name__ == "__main__":
+    CMD = {"STCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],"RDCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0 ]}
+
+    # We only have SPI bus 0 available to us on the Pi
+    bus = 0
+
+    #Device is the chip select pin. Set to 0 or 1, depending on the connections
+    device = 1
+
+    # Enable SPI
+    spi = spidev.SpiDev()
+
+    # Set SPI speed and mode
+    spi.max_speed_hz = int(1e6)
+    spi.mode = 0
+
     console.log(exchange_poll("STCOMM"))
     console.log(exchange_poll("RDCOMM"))

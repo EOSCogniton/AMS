@@ -65,6 +65,9 @@ if __name__ == "__main__":
     # Enable SPI
     spi = spidev.SpiDev()
 
+    # Open a connection to a specific bus and device (chip select pin)
+    spi.open(bus, device)
+
     # Set SPI speed and mode
     spi.max_speed_hz = int(1e6)
     spi.mode = 0

@@ -50,7 +50,7 @@ def CMDbyte(cmd):
 
 def exchange_poll(cmd):
     msgbin=CMDbyte(cmd)
-    PECbin=calcul_PEC(msgbin)
+    PECbin=calcul_PEC(msgbin)[::-1]
     return spi.xfer2([list_binary2int(msgbin),list_binary2int(PECbin)])
 
 if __name__ == "__main__":
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     bus = 0
 
     #Device is the chip select pin. Set to 0 or 1, depending on the connections
-    device = 1
+    device = 0
 
     # Enable SPI
     spi = spidev.SpiDev()
@@ -70,7 +70,7 @@ if __name__ == "__main__":
 
     # Set SPI speed and mode
     spi.max_speed_hz = int(1e6)
-    spi.mode = 0
+    spi.mode = 2
 
     print(exchange_poll("STCOMM"))
     print(exchange_poll("RDCOMM"))

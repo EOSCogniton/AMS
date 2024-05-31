@@ -72,5 +72,5 @@ if __name__ == "__main__":
     spi.max_speed_hz = int(1e6)
     spi.mode = 0
 
-    console.log(exchange_poll("STCOMM"))
-    console.log(exchange_poll("RDCOMM"))
+    print(exchange_poll("STCOMM"))
+    print(exchange_poll("RDCOMM"))

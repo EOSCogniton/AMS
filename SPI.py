@@ -51,7 +51,7 @@ def CMDbyte(cmd):
 def exchange_poll(cmd):
     msgbin=CMDbyte(cmd)
     PECbin=calcul_PEC(msgbin)
-    return spi.xfer2([list_binary2hex(msgbin),list_binary2hex(PECbin)])
+    return spi.xfer2([list_binary2int(msgbin),list_binary2int(PECbin)])
 
 if __name__ == "__main__":
     CMD = {"STCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],"RDCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0 ]}

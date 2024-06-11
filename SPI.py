@@ -1,60 +1,64 @@
 import time
 import spidev
 
-def XOR (a, b):
-    if a != b:
-        return 1
-    else:
-        return 0
 
-def calcul_PEC(Din):
-    PEC = [0,0,0,0,0,0,0,0,0,0,1,0,0,0,0]
-    for bit in Din:
-        IN0 = XOR(bit,PEC[14])
-        IN3 = XOR(IN0,PEC[2])
-        IN4 = XOR(IN0,PEC[3])
-        IN7 = XOR(IN0,PEC[6])
-        IN8 = XOR(IN0,PEC[7])
-        IN10 = XOR(IN0,PEC[9])
-        IN14 = XOR(IN0,PEC[13])
 
-        PEC [13] = PEC [12]
-        PEC [12] = PEC [11]
-        PEC [11] = PEC [10]
-        PEC [10] = IN10
-        PEC [9] = PEC [8]
-        PEC [8] = IN8
-        PEC [7] = IN7
-        PEC [6] = PEC [5]
-        PEC [5] = PEC [4]
-        PEC [4] = IN4
-        PEC [3] = IN3
-        PEC [2] = PEC [1]
-        PEC [1] = PEC [0]
-        PEC [0] = IN0
-    return PEC
 
-def list_binary2int(bin):
-    st=""
-    for x in bin:
-        st+=str(x)
-    return int(st,2)
 
-def list_binary2hex(bin):
-    n=list_binary2int(bin)
+
+
+def bin2hex(bin):
+    n=bin2int(bin)
     return hex(n)
 
-def CMDbyte(cmd):
-    cmdbin=CMD[cmd]
-    return cmdbin[8:][::-1]+[0,0,0,0,0]+cmdbin[:8][::1]
+def hex2bin(hex):
+    binst=bin(int(hex,16))
+    nb0=8-len(binst)+2
+    res=[0]*nb0
+    for x in binst[2:]:
+        res.append(int(x))
+    return res
 
+def int2bin(int):
+    binst=bin(int)
+    nb0=8-len(binst)+2
+    res=[0]*nb0
+    for x in binst[2:]:
+        res.append(int(x))
+    return res
+
+    
 def exchange_poll(cmd):
     msgbin=CMDbyte(cmd)
-    PECbin=calcul_PEC(msgbin)[::-1]
-    return spi.xfer2([list_binary2int(msgbin),list_binary2int(PECbin)])
+    PECbin=calcul_PEC(msgbin)
+    return spi.xfer([bin2int(msgbin),bin2int(PECbin)])
+
+def send_only(cmd):
+    msgbin=CMDbyte(cmd)
+    PECbin=calcul_PEC(msgbin)
+    return spi.writebytes([bin2int(msgbin),bin2int(PECbin)])
+
+def readconfig():
+    msgbin = CMDbyte("RDCFG")
+    PECbin = calcul_PEC(msgbin)
+    spi.writebytes([bin2int(msgbin),bin2int(PECbin)])
+    noread=True
+    readed=[]
+    while noread:
+        read=spi.readbytes(1)
+        readed.append(read)
+        for x in read:
+            if x!=255:
+                noread=False
+                read.append(spi.readbytes(7))
+                break
+    return readed
+
+
+
 
 if __name__ == "__main__":
-    CMD = {"STCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],"RDCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0 ]}
+    
 
     # We only have SPI bus 0 available to us on the Pi
     bus = 0
@@ -69,8 +73,11 @@ if __name__ == "__main__":
     spi.open(bus, device)
 
     # Set SPI speed and mode
-    spi.max_speed_hz = int(1e6)
-    spi.mode = 2
-
-    print(exchange_poll("STCOMM"))
-    print(exchange_poll("RDCOMM"))
+    spi.max_speed_hz = int(1/(1*1e-6))
+    spi.mode = 3
+    
+    while True:
+        print("stcomm",send_only("STCOMM"))
+        print(spi.readbytes(20))
+        # print(spi.readbytes(80))
+        time.sleep(0.1)

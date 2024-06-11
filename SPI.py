@@ -19,13 +19,7 @@ def hex2bin(hex):
         res.append(int(x))
     return res
 
-def int2bin(int):
-    binst=bin(int)
-    nb0=8-len(binst)+2
-    res=[0]*nb0
-    for x in binst[2:]:
-        res.append(int(x))
-    return res
+
 
     
 def exchange_poll(cmd):

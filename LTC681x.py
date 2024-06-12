@@ -11,9 +11,8 @@ class CV:
 
     def __init__(self):
         self.c_codes: List[int] = [0] * 18  # Cell Voltage Codes
-        self.pec_match: List[int] = [
-            0
-        ] * 6  # If a PEC error was detected during most recent read cmd
+        self.pec_match: List[int] = [0] * 6
+        # If a PEC error was detected during most recent read cmd
 
 
 class AX:
@@ -23,9 +22,8 @@ class AX:
 
     def __init__(self):
         self.a_codes: List[int] = [0] * 9  # Aux Voltage Codes
-        self.pec_match: List[int] = [
-            0
-        ] * 4  # If a PEC error was detected during most recent read cmd
+        self.pec_match: List[int] = [0] * 4
+        # If a PEC error was detected during most recent read cmd
 
 
 class ST:
@@ -38,9 +36,8 @@ class ST:
         self.flags: List[int] = [0] * 3  # Byte array that contains the uv/ov flag data
         self.mux_fail: List[int] = [0] * 1  # Mux self test status flag
         self.thsd: List[int] = [0] * 1  # Thermal shutdown status
-        self.pec_match: List[int] = [
-            0
-        ] * 2  # If a PEC error was detected during most recent read cmd
+        self.pec_match: List[int] = [0] * 2
+        # If a PEC error was detected during most recent read cmd
 
 
 class ICRegister:
@@ -51,9 +48,8 @@ class ICRegister:
     def __init__(self):
         self.tx_data: List[int] = [0] * 6  # Stores data to be transmitted
         self.rx_data: List[int] = [0] * 8  # Stores received data
-        self.rx_pec_match: int = (
-            0  # If a PEC error was detected during most recent read cmd
-        )
+        self.rx_pec_match: int = 0
+        # If a PEC error was detected during most recent read cmd
 
 
 class PECCounter:
@@ -108,12 +104,77 @@ class CellASIC:
 
 spi = spidev.SpiDev()
 
+###Variables
+
+# Macros for ADC conversion modes
+MD_422HZ_1KHZ = 0
+MD_27KHZ_14KHZ = 1
+MD_7KHZ_3KHZ = 2
+MD_26HZ_2KHZ = 3
+
+# Macros for ADC options
+ADC_OPT_ENABLED = 1
+ADC_OPT_DISABLED = 0
+
+# Macros for cell channel configurations for ADC conversion
+CELL_CH_ALL = 0
+CELL_CH_1and7 = 1
+CELL_CH_2and8 = 2
+CELL_CH_3and9 = 3
+CELL_CH_4and10 = 4
+CELL_CH_5and11 = 5
+CELL_CH_6and12 = 6
+
+# Macros for self-test options
+SELFTEST_1 = 1
+SELFTEST_2 = 2
+
+# Macros for auxiliary channel configurations for ADC conversion
+AUX_CH_ALL = 0
+AUX_CH_GPIO1 = 1
+AUX_CH_GPIO2 = 2
+AUX_CH_GPIO3 = 3
+AUX_CH_GPIO4 = 4
+AUX_CH_GPIO5 = 5
+AUX_CH_VREF2 = 6
+
+# Macros for status channel configurations for ADC conversion
+STAT_CH_ALL = 0
+STAT_CH_SOC = 1
+STAT_CH_ITEMP = 2
+STAT_CH_VREGA = 3
+STAT_CH_VREGD = 4
+
+# Macros for register configurations
+REG_ALL = 0
+REG_1 = 1
+REG_2 = 2
+REG_3 = 3
+REG_4 = 4
+REG_5 = 5
+REG_6 = 6
+
+# Macros for enabling or disabling permitted discharge
+DCP_DISABLED = 0
+DCP_ENABLED = 1
+
+# Macros for pull-up/down current options
+PULL_UP_CURRENT = 1
+PULL_DOWN_CURRENT = 0
+
+# Number of received bytes
+NUM_RX_BYT = 8
+
+# Register types
 CELL = 1
 AUX = 2
 STAT = 3
 CFGR = 0
 CFGRB = 4
-NUM_RX_BYT = 8
+
+MAX_SPEED_HZ = int(1e6)
+
+BMS_IC: List["CellASIC"]
 
 CMD = {
     "STCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],
@@ -176,7 +237,8 @@ def create_bin_for_pec(data):
 
 def pec15_calc(nb_byte: int, data: List[bool]):
     bindata = create_bin_for_pec(data[:nb_byte])
-    return calcul_PEC(bindata)
+    pecbin = calcul_PEC(bindata)
+    return bin2int(pecbin[:8]), bin2int(pecbin[8:])
 
 
 def XOR(a, b):
@@ -221,13 +283,13 @@ def calcul_PEC(Din: list):
 def wakeup_idle(total_ic: int):
     """Wake isoSPI up from IDlE state and enters the READY state"""
     for _ in range(total_ic):
-        spi.writebytes(0xFF)
+        spi.writebytes([0xFF])
 
 
-def wakeup_sleep(total_ic: int, f_hz: int):
+def wakeup_sleep(total_ic: int, f_hz=MAX_SPEED_HZ):
     """Generic wakeup command to wake the LTC681x from sleep state"""
     for _ in range(total_ic):
-        spi.writebytes([0, 0, 0, 0, 0, 0, 0, 0] * 300 * 1e-6 * f_hz)
+        spi.writebytes([0, 0, 0, 0, 0, 0, 0, 0] * int(300 * 1e-6 * f_hz))
         time.sleep(10e-6)
 
 
@@ -271,15 +333,15 @@ def write_68(
             cmd_index += 1
 
         data_pec = pec15_calc(BYTES_IN_REG, data[((current_ic - 1) * 6) :])
-        word[cmd_index] = bin2int(data_pec[8:])
-        word[cmd_index + 1] = bin2int(data_pec[:8])
+        word[cmd_index] = data_pec[0]
+        word[cmd_index + 1] = data_pec[1]
 
         cmd_index += 2
 
     spi.writebytes(word)
 
 
-def read_68(cmd: List[bool], total_ic: int):
+def read_68(total_ic: int, cmd: List[bool]):
     """Generic function to write 68xx commands and read data. \n
     Function calculated PEC for cmd data"""
 
@@ -304,20 +366,16 @@ def read_68(cmd: List[bool], total_ic: int):
                 current_byte + (current_ic * BYTES_IN_REG)
             ]
 
-    received_pec = int2bin(res[(current_ic * 8) + 6]) + int2bin(
-        res[(current_ic * 8) + 7]
-    )
-    bindata = create_bin_for_pec(
-        data[(current_ic - 1) * 6 : (current_ic - 1) * 6 + BYTES_IN_REG - 2]
-    )
-    data_pec = calcul_PEC(bindata)
+    received_pec = (res[(current_ic * 8) + 6], res[(current_ic * 8) + 7])
+    data_pec = pec15_calc(6, data[((current_ic - 1) * 6) :])
     if received_pec != data_pec:
         pec_error = -1
 
-    return data, pec_error
+    return res, pec_error
 
 
-def LTC681x_wrcfg(total_ic: int, ic: List["CellASIC"]):
+def LTC681x_wrcfg(total_ic: int):
+    global BMS_IC
     """
     Write the LTC681x CFGRA.
 
@@ -329,7 +387,7 @@ def LTC681x_wrcfg(total_ic: int, ic: List["CellASIC"]):
     write_count = 0
 
     for current_ic in range(total_ic):
-        if not ic.isospi_reverse:
+        if not ic[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
@@ -341,7 +399,8 @@ def LTC681x_wrcfg(total_ic: int, ic: List["CellASIC"]):
     write_68(total_ic, cmd, write_buffer)
 
 
-def LTC681x_wrcfgb(total_ic: int, ic: List["CellASIC"]):
+def LTC681x_wrcfgb(total_ic: int):
+    global BMS_IC
     """
     Write the LTC681x CFGRB.
 
@@ -353,7 +412,7 @@ def LTC681x_wrcfgb(total_ic: int, ic: List["CellASIC"]):
     write_count = 0
 
     for current_ic in range(total_ic):
-        if not ic.isospi_reverse:
+        if not ic[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
@@ -365,7 +424,8 @@ def LTC681x_wrcfgb(total_ic: int, ic: List["CellASIC"]):
     write_68(total_ic, cmd, write_buffer)
 
 
-def LTC681x_rdcfg(total_ic: int, ic: List["CellASIC"]) -> int:
+def LTC681x_rdcfg(total_ic: int) -> int:
+    global BMS_IC
     """
     Read the LTC681x CFGA.
 
@@ -380,7 +440,7 @@ def LTC681x_rdcfg(total_ic: int, ic: List["CellASIC"]) -> int:
     read_buffer, pec_error = read_68(total_ic, cmd)
 
     for current_ic in range(total_ic):
-        if not ic.isospi_reverse:
+        if not ic[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
@@ -389,8 +449,9 @@ def LTC681x_rdcfg(total_ic: int, ic: List["CellASIC"]) -> int:
             ic[c_ic].config.rx_data[byte] = read_buffer[byte + (8 * current_ic)]
 
         calc_pec = pec15_calc(6, read_buffer[8 * current_ic :])
-        data_pec = read_buffer[7 + (8 * current_ic)] | (
-            read_buffer[6 + (8 * current_ic)] << 8
+        data_pec = (
+            read_buffer[6 + (8 * current_ic)],
+            read_buffer[7 + (8 * current_ic)],
         )
         if calc_pec != data_pec:
             ic[c_ic].config.rx_pec_match = 1
@@ -402,7 +463,8 @@ def LTC681x_rdcfg(total_ic: int, ic: List["CellASIC"]) -> int:
     return pec_error
 
 
-def LTC681x_rdcfgb(total_ic: int, ic: List["CellASIC"]) -> int:
+def LTC681x_rdcfgb(total_ic: int) -> int:
+    global BMS_IC
     """
     Read the LTC681x CFGB.
 
@@ -417,7 +479,7 @@ def LTC681x_rdcfgb(total_ic: int, ic: List["CellASIC"]) -> int:
     read_buffer, pec_error = read_68(total_ic, cmd)
 
     for current_ic in range(total_ic):
-        if not ic.isospi_reverse:
+        if not ic[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
@@ -426,8 +488,9 @@ def LTC681x_rdcfgb(total_ic: int, ic: List["CellASIC"]) -> int:
             ic[c_ic].configb.rx_data[byte] = read_buffer[byte + (8 * current_ic)]
 
         calc_pec = pec15_calc(6, read_buffer[8 * current_ic :])
-        data_pec = read_buffer[7 + (8 * current_ic)] | (
-            read_buffer[6 + (8 * current_ic)] << 8
+        data_pec = (
+            read_buffer[6 + (8 * current_ic)],
+            read_buffer[7 + (8 * current_ic)],
         )
         if calc_pec != data_pec:
             ic[c_ic].configb.rx_pec_match = 1
@@ -572,7 +635,7 @@ def LTC681x_rdcv(reg: int, total_ic: int, ic: List[CellASIC]) -> int:
 
     if reg == 0:
         for cell_reg in range(1, ic[0].ic_reg.num_cv_reg + 1):
-            cell_data=LTC681x_rdcv_reg(cell_reg, total_ic)
+            cell_data = LTC681x_rdcv_reg(cell_reg, total_ic)
             for current_ic in range(total_ic):
                 if not ic[current_ic].isospi_reverse:
                     c_ic = current_ic
@@ -587,7 +650,7 @@ def LTC681x_rdcv(reg: int, total_ic: int, ic: List[CellASIC]) -> int:
                     ic[c_ic].cells.pec_match,
                 )
     else:
-        LTC681x_rdcv_reg(reg, total_ic, cell_data)
+        cell_data = LTC681x_rdcv_reg(reg, total_ic)
         for current_ic in range(total_ic):
             if not ic[current_ic].isospi_reverse:
                 c_ic = current_ic
@@ -623,7 +686,7 @@ def LTC681x_rdaux(reg: int, total_ic: int, ic: List[CellASIC]) -> int:
 
     if reg == 0:
         for gpio_reg in range(1, ic[0].ic_reg.num_gpio_reg + 1):
-            data=LTC681x_rdaux_reg(gpio_reg, total_ic)
+            data = LTC681x_rdaux_reg(gpio_reg, total_ic)
             for current_ic in range(total_ic):
                 if not ic[current_ic].isospi_reverse:
                     c_ic = current_ic
@@ -638,7 +701,7 @@ def LTC681x_rdaux(reg: int, total_ic: int, ic: List[CellASIC]) -> int:
                     ic[c_ic].aux.pec_match,
                 )
     else:
-        LTC681x_rdaux_reg(reg, total_ic, data)
+        data = LTC681x_rdaux_reg(reg, total_ic)
         for current_ic in range(total_ic):
             if not ic[current_ic].isospi_reverse:
                 c_ic = current_ic
@@ -679,10 +742,11 @@ def LTC681x_rdaux_reg(reg: int, total_ic: int):
     data = spi.readbytes(REG_LEN * total_ic)
     return data
 
+
 def LTC681x_rdcv_reg(reg: int, total_ic: int):
     """
     Writes the command and reads the raw cell voltage register data.
-    
+
     :param reg: Determines which cell voltage register is read back.
     :param total_ic: The number of ICs in the system.
     """
@@ -703,5 +767,384 @@ def LTC681x_rdcv_reg(reg: int, total_ic: int):
     else:
         cmd_68(CMD["RDCVA"])
 
-    data=spi.readbytes(REG_LEN * total_ic)
+    data = spi.readbytes(REG_LEN * total_ic)
     return data
+
+
+def parse_cells(
+    current_ic: int,  # Current IC
+    cell_reg: int,  # Type of register
+    cell_data: List[int],  # Unparsed data
+    cell_codes: List[int],  # Parsed data
+    ic_pec: List[int],  # PEC error
+) -> int:
+    """
+    Helper function that parses voltage measurement registers.
+
+    :param current_ic: Current IC
+    :param cell_reg: Type of register
+    :param cell_data: Unparsed data
+    :param cell_codes: Parsed data
+    :param ic_pec: PEC error
+    :return: PEC error flag (0 if no error, 1 if error)
+    """
+    BYT_IN_REG = 6
+    CELL_IN_REG = 3
+    pec_error = 0
+    data_counter = current_ic * NUM_RX_BYT  # data counter
+
+    for current_cell in range(CELL_IN_REG):
+        # This loop parses the read back data into the register codes
+        # Each code is received as two bytes and is combined to create the parsed code
+        parsed_cell = cell_data[data_counter] + (cell_data[data_counter + 1] << 8)
+        cell_codes[current_cell + ((cell_reg - 1) * CELL_IN_REG)] = parsed_cell
+
+        data_counter += 2  # Increment by two for each parsed code
+
+    # The received PEC for the current_ic is transmitted as the 7th and 8th bytes
+    received_pec = (cell_data[data_counter], cell_data[data_counter + 1])
+    data_pec = pec15_calc(
+        BYT_IN_REG, cell_data[current_ic * NUM_RX_BYT : (current_ic + 1) * NUM_RX_BYT]
+    )
+
+    if received_pec != data_pec:
+        pec_error = 1  # Set pec_error to 1 if any PEC errors
+        ic_pec[cell_reg - 1] = 1
+    else:
+        ic_pec[cell_reg - 1] = 0
+
+    return pec_error
+
+
+def LTC681x_rdstat(
+    reg: int,  # Determines which Stat register is read back.
+    total_ic: int,  # The number of ICs in the system.
+    ic: List[CellASIC],  # A two dimensional array of the stat codes.
+) -> int:
+    """
+    Reads and parses the LTC681x stat registers.
+
+    The function is used to read the parsed Stat codes of the LTC681x.
+    This function will send the requested read commands, parse the data
+    and store the gpio voltages in the stat_codes variable.
+
+    :param reg: Determines which Stat register is read back.
+    :param total_ic: The number of ICs in the system.
+    :param ic: A two dimensional array of the stat codes.
+    :return: PEC error flag (0 if no error, -1 if error)
+    """
+    BYT_IN_REG = 6
+    STAT_IN_REG = 3
+    data = [0] * (12 * total_ic)
+    data_counter = 0
+    pec_error = 0
+    c_ic = 0
+
+    if reg == 0:
+        for stat_reg in range(
+            1, 3
+        ):  # Executes once for each of the LTC681x stat voltage registers
+            data_counter = 0
+            data = LTC681x_rdstat_reg(stat_reg, total_ic)
+            # Reads the raw status register data into the data[] array
+
+            for current_ic in range(total_ic):
+                # Executes for every LTC681x in the daisy chain
+                if not ic[0].isospi_reverse:
+                    c_ic = current_ic
+                else:
+                    c_ic = total_ic - current_ic - 1
+
+                if stat_reg == 1:
+                    for current_stat in range(STAT_IN_REG):
+                        # This loop parses the read back data into Status registers
+                        parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
+                        ic[c_ic].stat.stat_codes[current_stat] = parsed_stat
+                        data_counter += 2
+                elif stat_reg == 2:
+                    parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
+                    data_counter += 2
+                    ic[c_ic].stat.stat_codes[3] = parsed_stat
+                    ic[c_ic].stat.flags[0] = data[data_counter]
+                    data_counter += 1
+                    ic[c_ic].stat.flags[1] = data[data_counter]
+                    data_counter += 1
+                    ic[c_ic].stat.flags[2] = data[data_counter]
+                    data_counter += 1
+                    ic[c_ic].stat.mux_fail[0] = (data[data_counter] & 0x02) >> 1
+                    ic[c_ic].stat.thsd[0] = data[data_counter] & 0x01
+                    data_counter += 1
+
+                received_pec = (data[data_counter], data[data_counter + 1])
+                data_pec = pec15_calc(
+                    BYT_IN_REG,
+                    data[current_ic * NUM_RX_BYT : (current_ic + 1) * NUM_RX_BYT],
+                )
+
+                if received_pec != data_pec:
+                    pec_error = (
+                        -1
+                    )  # The pec_error variable is simply set negative if any PEC errors are detected
+                    ic[c_ic].stat.pec_match[stat_reg - 1] = 1
+                else:
+                    ic[c_ic].stat.pec_match[stat_reg - 1] = 0
+
+                data_counter += 2  # Because the transmitted PEC code is 2 bytes long, increment the data_counter by 2 bytes
+    else:
+        data = LTC681x_rdstat_reg(reg, total_ic)
+        for current_ic in range(total_ic):
+            # Executes for every LTC681x in the daisy chain
+            if not ic[0].isospi_reverse:
+                c_ic = current_ic
+            else:
+                c_ic = total_ic - current_ic - 1
+
+            if reg == 1:
+                for current_stat in range(STAT_IN_REG):
+                    # This loop parses the read back data into Status voltages
+                    parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
+                    ic[c_ic].stat.stat_codes[current_stat] = parsed_stat
+                    data_counter += 2
+            elif reg == 2:
+                parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
+                data_counter += 2
+                ic[c_ic].stat.stat_codes[3] = parsed_stat
+                ic[c_ic].stat.flags[0] = data[data_counter]
+                data_counter += 1
+                ic[c_ic].stat.flags[1] = data[data_counter]
+                data_counter += 1
+                ic[c_ic].stat.flags[2] = data[data_counter]
+                data_counter += 1
+                ic[c_ic].stat.mux_fail[0] = (data[data_counter] & 0x02) >> 1
+                ic[c_ic].stat.thsd[0] = data[data_counter] & 0x01
+                data_counter += 1
+
+            received_pec = (data[data_counter], data[data_counter + 1])
+            data_pec = pec15_calc(
+                BYT_IN_REG,
+                data[current_ic * NUM_RX_BYT : (current_ic + 1) * NUM_RX_BYT],
+            )
+            if received_pec != data_pec:
+                pec_error = -1
+                # The pec_error variable is simply set negative if any PEC errors are detected
+                ic[c_ic].stat.pec_match[reg - 1] = 1
+            else:
+                ic[c_ic].stat.pec_match[reg - 1] = 0
+
+            data_counter += 2
+
+    LTC681x_check_pec(total_ic, STAT, ic)
+
+    return pec_error
+
+
+def LTC681x_rdstat_reg(
+    reg: int,  # Determines which stat register is read back
+    total_ic: int,  # The number of ICs in the system
+) -> None:
+    """
+    The function reads a single stat register and stores the read data
+    in the *data point as a byte array. This function is rarely used outside of
+    the LTC681x_rdstat() command.
+
+    :param reg: Determines which stat register is read back
+    :param total_ic: The number of ICs in the system
+    :param data: Array of the unparsed stat codes
+    """
+    REG_LEN = 8  # number of bytes in the register + 2 bytes for the PEC
+
+    if reg == 1:  # Read back status group A
+        cmd_68(CMD["RDSTATA"])
+    elif reg == 2:  # Read back status group B
+        cmd_68(CMD["RDSTATB"])
+    else:  # Read back status group A
+        cmd_68(CMD["RDSTATA"])
+
+    data = spi.readbytes(REG_LEN * total_ic)
+    return data
+
+
+def LTC681x_init_cfg(
+    total_ic: int,  # Number of ICs in the system
+    ic: list,  # A list of dictionaries that stores the data
+) -> None:
+    """
+    Helper function to initialize CFG variables
+
+    :param total_ic: Number of ICs in the system
+    :param ic: A list of dictionaries that stores the data
+    """
+    for current_ic in range(total_ic):
+        for j in range(6):
+            ic[current_ic].config.tx_data[j] = 0
+
+
+def LTC681x_set_cfgr(
+    nIC: int,  # Current IC
+    ic: list,  # A list of dictionaries that stores the data
+    refon: bool,  # The REFON bit
+    adcopt: bool,  # The ADCOPT bit
+    gpio: list,  # The GPIO bits
+    dcc: list,  # The DCC bits
+    dcto: list,  # The Dcto bits
+    uv: int,  # The UV value
+    ov: int,  # The OV value
+) -> None:
+    """
+    Helper function to set CFGR variable
+
+    :param nIC: Current IC
+    :param ic: A list of dictionaries that stores the data
+    :param refon: The REFON bit
+    :param adcopt: The ADCOPT bit
+    :param gpio: The GPIO bits
+    :param dcc: The DCC bits
+    :param dcto: The Dcto bits
+    :param uv: The UV value
+    :param ov: The OV value
+    """
+    LTC681x_set_cfgr_refon(nIC, ic, refon)
+    LTC681x_set_cfgr_adcopt(nIC, ic, adcopt)
+    LTC681x_set_cfgr_gpio(nIC, ic, gpio)
+    LTC681x_set_cfgr_dis(nIC, ic, dcc)
+    LTC681x_set_cfgr_dcto(nIC, ic, dcto)
+    LTC681x_set_cfgr_uv(nIC, ic, uv)
+    LTC681x_set_cfgr_ov(nIC, ic, ov)
+
+
+def LTC681x_set_cfgr_refon(nIC, ic, refon):
+    """
+    Helper function to set the REFON bit
+    """
+    if refon:
+        ic[nIC].config.tx_data[0] |= 0x04
+    else:
+        ic[nIC].config.tx_data[0] &= 0xFB
+
+
+def LTC681x_set_cfgr_adcopt(nIC, ic, adcopt):
+    """
+    Helper function to set the ADCOPT bit
+    """
+    if adcopt:
+        ic[nIC].config.tx_data[0] |= 0x01
+    else:
+        ic[nIC].config.tx_data[0] &= 0xFE
+
+
+def LTC681x_set_cfgr_gpio(nIC, ic, gpio):
+    """
+    Helper function to set GPIO bits
+    """
+    for i in range(5):
+        if gpio[i]:
+            ic[nIC].config.tx_data[0] |= 0x01 << (i + 3)
+        else:
+            ic[nIC].config.tx_data[0] &= ~(0x01 << (i + 3))
+
+
+def LTC681x_set_cfgr_dis(nIC, ic, dcc):
+    """
+    Helper function to control discharge
+    """
+    for i in range(8):
+        if dcc[i]:
+            ic[nIC].config.tx_data[4] |= 0x01 << i
+        else:
+            ic[nIC].config.tx_data[4] &= ~(0x01 << i)
+    for i in range(4):
+        if dcc[i + 8]:
+            ic[nIC].config.tx_data[5] |= 0x01 << i
+        else:
+            ic[nIC].config.tx_data[5] &= ~(0x01 << i)
+
+
+def LTC681x_set_cfgr_dcto(nIC, ic, dcto):
+    """
+    Helper function to control discharge time value
+    """
+    for i in range(4):
+        if dcto[i]:
+            ic[nIC].config.tx_data[5] |= 0x01 << (i + 4)
+        else:
+            ic[nIC].config.tx_data[5] &= ~(0x01 << (i + 4))
+
+
+def LTC681x_set_cfgr_uv(nIC, ic, uv):
+    """
+    Helper function to set UV value in CFG register
+    """
+    tmp = (uv // 16) - 1
+    ic[nIC].config.tx_data[1] = 0x00FF & tmp
+    ic[nIC].config.tx_data[2] &= 0xF0
+    ic[nIC].config.tx_data[2] |= (0x0F00 & tmp) >> 8
+
+
+def LTC681x_set_cfgr_ov(nIC, ic, ov):
+    """
+    Helper function to set OV value in CFG register
+    """
+    tmp = ov // 16
+    ic[nIC].config.tx_data[3] = 0x00FF & (tmp >> 4)
+    ic[nIC].config.tx_data[2] &= 0x0F
+    ic[nIC].config.tx_data[2] |= (0x000F & tmp) << 4
+
+
+def LTC681x_reset_crc_count(total_ic: int, ic: List["CellASIC"]):
+    """
+    Helper Function to reset PEC counters.
+
+    Parameters:
+    - total_ic (int): Number of ICs in the system.
+    - ic (List[CellASIC]): A two-dimensional list that stores the data.
+
+    Returns:
+    None
+    """
+    for current_ic in range(total_ic):
+        ic[current_ic].crc_count.pec_count = 0
+        ic[current_ic].crc_count.cfgr_pec = 0
+        for i in range(6):
+            ic[current_ic].crc_count.cell_pec[i] = 0
+
+        for i in range(4):
+            ic[current_ic].crc_count.aux_pec[i] = 0
+
+        for i in range(2):
+            ic[current_ic].crc_count.stat_pec[i] = 0
+
+
+def LTC681x_pollAdc() -> int:
+    """
+    This function will block operation until the ADC has finished its conversion.
+
+    Returns:
+        int: The counter value.
+    """
+    counter = 0
+    finished = 0
+    current_time = 0
+    cmd_68(CMD["PLADC"])
+    while counter < 200000 and finished == 0:
+        current_time = spi.readbytes(1)
+        if current_time[0] > 0:
+            finished = 1
+        else:
+            counter += 10
+
+    return counter
+
+
+def LTC681x_clear_discharge(total_ic: int, ic: List["CellASIC"]) -> None:
+    """
+    Clears all of the DCC bits in the configuration registers.
+
+    Args:
+        total_ic (int): Number of ICs in the daisy chain.
+        ic (List[cell_asic]): A list of cell_asic objects that will store the data.
+    """
+    for i in range(total_ic):
+        ic[i].config.tx_data[4] = 0
+        ic[i].config.tx_data[5] &= 0xF0
+        ic[i].configb.tx_data[0] &= 0x0F
+        ic[i].configb.tx_data[1] &= 0xF0

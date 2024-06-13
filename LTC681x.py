@@ -2,105 +2,7 @@ import time
 import spidev
 
 from typing import List
-
-
-class CV:
-    """
-    Cell Voltage data structure.
-    """
-
-    def __init__(self):
-        self.c_codes: List[int] = [0] * 18  # Cell Voltage Codes
-        self.pec_match: List[int] = [0] * 6
-        # If a PEC error was detected during most recent read cmd
-
-
-class AX:
-    """
-    AUX Reg Voltage Data structure.
-    """
-
-    def __init__(self):
-        self.a_codes: List[int] = [0] * 9  # Aux Voltage Codes
-        self.pec_match: List[int] = [0] * 4
-        # If a PEC error was detected during most recent read cmd
-
-
-class ST:
-    """
-    Status Reg data structure.
-    """
-
-    def __init__(self):
-        self.stat_codes: List[int] = [0] * 4  # Status codes
-        self.flags: List[int] = [0] * 3  # Byte array that contains the uv/ov flag data
-        self.mux_fail: List[int] = [0] * 1  # Mux self test status flag
-        self.thsd: List[int] = [0] * 1  # Thermal shutdown status
-        self.pec_match: List[int] = [0] * 2
-        # If a PEC error was detected during most recent read cmd
-
-
-class ICRegister:
-    """
-    IC register structure.
-    """
-
-    def __init__(self):
-        self.tx_data: List[int] = [0] * 6  # Stores data to be transmitted
-        self.rx_data: List[int] = [0] * 8  # Stores received data
-        self.rx_pec_match: int = 0
-        # If a PEC error was detected during most recent read cmd
-
-
-class PECCounter:
-    """
-    PEC error counter structure.
-    """
-
-    def __init__(self):
-        self.pec_count: int = 0  # Overall PEC error count
-        self.cfgr_pec: int = 0  # Configuration register data PEC error count
-        self.cell_pec: List[int] = [0] * 6  # Cell voltage register data PEC error count
-        self.aux_pec: List[int] = [0] * 4  # Aux register data PEC error count
-        self.stat_pec: List[int] = [0] * 2  # Status register data PEC error count
-
-
-class RegisterCfg:
-    """
-    Register configuration structure.
-    """
-
-    def __init__(self):
-        self.cell_channels: int = 0  # Number of Cell channels
-        self.stat_channels: int = 0  # Number of Stat channels
-        self.aux_channels: int = 0  # Number of Aux channels
-        self.num_cv_reg: int = 0  # Number of Cell voltage register
-        self.num_gpio_reg: int = 0  # Number of Aux register
-        self.num_stat_reg: int = 0  # Number of Status register
-
-
-class CellASIC:
-    """
-    Cell variable structure.
-    """
-
-    def __init__(self):
-        self.config = ICRegister()
-        self.configb = ICRegister()
-        self.cells = CV()
-        self.aux = AX()
-        self.stat = ST()
-        self.com = ICRegister()
-        self.pwm = ICRegister()
-        self.pwmb = ICRegister()
-        self.sctrl = ICRegister()
-        self.sctrlb = ICRegister()
-        self.sid: List[int] = [0] * 6
-        self.isospi_reverse: bool = False
-        self.crc_count = PECCounter()
-        self.ic_reg = RegisterCfg()
-        self.system_open_wire: int = 0
-
+import config
 
 spi = spidev.SpiDev()
 
@@ -174,11 +76,10 @@ CFGRB = 4
 
 MAX_SPEED_HZ = int(1e6)
 
-BMS_IC: List["CellASIC"]
-
 CMD = {
     "STCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],
     "RDCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+    "WRCOMM": [1, 1, 0, 0, 1, 0, 0, 0, 0, 1],
     "WRCGFA": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
     "WRCFGB": [0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0],
     "RDCFGA": [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
@@ -209,6 +110,8 @@ CMD = {
     "PLADC": [1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0],
     "DIAGN": [1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1],
 }
+
+###Utilitaires divers
 
 
 def bin2int(binval: List[bool]):
@@ -280,6 +183,22 @@ def calcul_PEC(Din: list):
     return res[::-1]
 
 
+def spi_write_read(tx_data: List[int], rx_len: int) -> None:
+    """
+    Writes and reads a set number of bytes using the SPI port.
+
+    Args:
+        tx_data (List[int]): Array of data to be written on SPI port.
+        rx_len (int): Length of the expected rx data array.
+
+    Returns:
+        List[int]: Array of readed value
+    """
+    data = spi.xfer(tx_data + [255] * rx_len)
+    return data[len(tx_data) :]
+
+
+###Fonctions de la LTC
 def wakeup_idle(total_ic: int):
     """Wake isoSPI up from IDlE state and enters the READY state"""
     for _ in range(total_ic):
@@ -356,8 +275,7 @@ def read_68(total_ic: int, cmd: List[bool]):
     word[2] = bin2int(pec[:8])
     word[3] = bin2int(pec[8:])
 
-    spi.writebytes(word)
-    data = spi.readbytes(BYTES_IN_REG * total_ic)
+    data = spi_write_read(word, BYTES_IN_REG * total_ic)
     res = [0] * len(data)
 
     for current_ic in range(total_ic):
@@ -375,7 +293,6 @@ def read_68(total_ic: int, cmd: List[bool]):
 
 
 def LTC681x_wrcfg(total_ic: int):
-    global BMS_IC
     """
     Write the LTC681x CFGRA.
 
@@ -387,20 +304,19 @@ def LTC681x_wrcfg(total_ic: int):
     write_count = 0
 
     for current_ic in range(total_ic):
-        if not BMS_IC[current_ic].isospi_reverse:
+        if not config.BMS_IC[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
 
         for data in range(6):
-            write_buffer[write_count] = BMS_IC[c_ic].config.tx_data[data]
+            write_buffer[write_count] = config.BMS_IC[c_ic].config.tx_data[data]
             write_count += 1
 
     write_68(total_ic, cmd, write_buffer)
 
 
 def LTC681x_wrcfgb(total_ic: int):
-    global BMS_IC
     """
     Write the LTC681x CFGRB.
 
@@ -412,20 +328,19 @@ def LTC681x_wrcfgb(total_ic: int):
     write_count = 0
 
     for current_ic in range(total_ic):
-        if not BMS_IC[current_ic].isospi_reverse:
+        if not config.BMS_IC[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
 
         for data in range(6):
-            write_buffer[write_count] = BMS_IC[c_ic].configb.tx_data[data]
+            write_buffer[write_count] = config.BMS_IC[c_ic].configb.tx_data[data]
             write_count += 1
 
     write_68(total_ic, cmd, write_buffer)
 
 
 def LTC681x_rdcfg(total_ic: int) -> int:
-    global BMS_IC
     """
     Read the LTC681x CFGA.
 
@@ -440,13 +355,15 @@ def LTC681x_rdcfg(total_ic: int) -> int:
     read_buffer, pec_error = read_68(total_ic, cmd)
 
     for current_ic in range(total_ic):
-        if not BMS_IC[current_ic].isospi_reverse:
+        if not config.BMS_IC[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
 
         for byte in range(8):
-            BMS_IC[c_ic].config.rx_data[byte] = read_buffer[byte + (8 * current_ic)]
+            config.BMS_IC[c_ic].config.rx_data[byte] = read_buffer[
+                byte + (8 * current_ic)
+            ]
 
         calc_pec = pec15_calc(6, read_buffer[8 * current_ic :])
         data_pec = (
@@ -454,9 +371,9 @@ def LTC681x_rdcfg(total_ic: int) -> int:
             read_buffer[7 + (8 * current_ic)],
         )
         if calc_pec != data_pec:
-            BMS_IC[c_ic].config.rx_pec_match = 1
+            config.BMS_IC[c_ic].config.rx_pec_match = 1
         else:
-            BMS_IC[c_ic].config.rx_pec_match = 0
+            config.BMS_IC[c_ic].config.rx_pec_match = 0
 
     LTC681x_check_pec(total_ic, CFGR)
 
@@ -464,7 +381,6 @@ def LTC681x_rdcfg(total_ic: int) -> int:
 
 
 def LTC681x_rdcfgb(total_ic: int) -> int:
-    global BMS_IC
     """
     Read the LTC681x CFGB.
 
@@ -479,13 +395,15 @@ def LTC681x_rdcfgb(total_ic: int) -> int:
     read_buffer, pec_error = read_68(total_ic, cmd)
 
     for current_ic in range(total_ic):
-        if not BMS_IC[current_ic].isospi_reverse:
+        if not config.BMS_IC[current_ic].isospi_reverse:
             c_ic = current_ic
         else:
             c_ic = total_ic - current_ic - 1
 
         for byte in range(8):
-            BMS_IC[c_ic].configb.rx_data[byte] = read_buffer[byte + (8 * current_ic)]
+            config.BMS_IC[c_ic].configb.rx_data[byte] = read_buffer[
+                byte + (8 * current_ic)
+            ]
 
         calc_pec = pec15_calc(6, read_buffer[8 * current_ic :])
         data_pec = (
@@ -493,9 +411,9 @@ def LTC681x_rdcfgb(total_ic: int) -> int:
             read_buffer[7 + (8 * current_ic)],
         )
         if calc_pec != data_pec:
-            BMS_IC[c_ic].configb.rx_pec_match = 1
+            config.BMS_IC[c_ic].configb.rx_pec_match = 1
         else:
-            BMS_IC[c_ic].configb.rx_pec_match = 0
+            config.BMS_IC[c_ic].configb.rx_pec_match = 0
 
     LTC681x_check_pec(total_ic, CFGRB)
 
@@ -503,7 +421,6 @@ def LTC681x_rdcfgb(total_ic: int) -> int:
 
 
 def LTC681x_check_pec(total_ic: int, reg: int):
-    global BMS_IC
     """
     Helper function that increments PEC counters.
 
@@ -513,29 +430,47 @@ def LTC681x_check_pec(total_ic: int, reg: int):
     """
     if reg == CFGR:
         for current_ic in range(total_ic):
-            BMS_IC[current_ic].crc_count.pec_count += BMS_IC[current_ic].config.rx_pec_match
-            BMS_IC[current_ic].crc_count.cfgr_pec += BMS_IC[current_ic].config.rx_pec_match
+            config.BMS_IC[current_ic].crc_count.pec_count += config.BMS_IC[
+                current_ic
+            ].config.rx_pec_match
+            config.BMS_IC[current_ic].crc_count.cfgr_pec += config.BMS_IC[
+                current_ic
+            ].config.rx_pec_match
     elif reg == CFGRB:
         for current_ic in range(total_ic):
-            BMS_IC[current_ic].crc_count.pec_count += BMS_IC[current_ic].configb.rx_pec_match
-            BMS_IC[current_ic].crc_count.cfgr_pec += BMS_IC[current_ic].configb.rx_pec_match
+            config.BMS_IC[current_ic].crc_count.pec_count += config.BMS_IC[
+                current_ic
+            ].configb.rx_pec_match
+            config.BMS_IC[current_ic].crc_count.cfgr_pec += config.BMS_IC[
+                current_ic
+            ].configb.rx_pec_match
     elif reg == CELL:
         for current_ic in range(total_ic):
-            for i in range(BMS_IC[0].ic_reg.num_cv_reg):
-                BMS_IC[current_ic].crc_count.pec_count += BMS_IC[current_ic].cells.pec_match[i]
-                BMS_IC[current_ic].crc_count.cell_pec[i] += BMS_IC[current_ic].cells.pec_match[
-                    i
-                ]
+            for i in range(config.BMS_IC[0].ic_reg.num_cv_reg):
+                config.BMS_IC[current_ic].crc_count.pec_count += config.BMS_IC[
+                    current_ic
+                ].cells.pec_match[i]
+                config.BMS_IC[current_ic].crc_count.cell_pec[i] += config.BMS_IC[
+                    current_ic
+                ].cells.pec_match[i]
     elif reg == AUX:
         for current_ic in range(total_ic):
-            for i in range(BMS_IC[0].ic_reg.num_gpio_reg):
-                BMS_IC[current_ic].crc_count.pec_count += BMS_IC[current_ic].aux.pec_match[i]
-                BMS_IC[current_ic].crc_count.aux_pec[i] += BMS_IC[current_ic].aux.pec_match[i]
+            for i in range(config.BMS_IC[0].ic_reg.num_gpio_reg):
+                config.BMS_IC[current_ic].crc_count.pec_count += config.BMS_IC[
+                    current_ic
+                ].aux.pec_match[i]
+                config.BMS_IC[current_ic].crc_count.aux_pec[i] += config.BMS_IC[
+                    current_ic
+                ].aux.pec_match[i]
     elif reg == STAT:
         for current_ic in range(total_ic):
-            for i in range(BMS_IC[0].ic_reg.num_stat_reg - 1):
-                BMS_IC[current_ic].crc_count.pec_count += BMS_IC[current_ic].stat.pec_match[i]
-                BMS_IC[current_ic].crc_count.stat_pec[i] += BMS_IC[current_ic].stat.pec_match[i]
+            for i in range(config.BMS_IC[0].ic_reg.num_stat_reg - 1):
+                config.BMS_IC[current_ic].crc_count.pec_count += config.BMS_IC[
+                    current_ic
+                ].stat.pec_match[i]
+                config.BMS_IC[current_ic].crc_count.stat_pec[i] += config.BMS_IC[
+                    current_ic
+                ].stat.pec_match[i]
 
 
 def LTC681x_adcv(MD: int, DCP: int, CH: int):
@@ -620,7 +555,6 @@ def LTC681x_adcvax(MD: int, DCP: int):
 
 
 def LTC681x_rdcv(reg: int, total_ic: int) -> int:
-    global BMS_IC
     """
     Reads and parses the LTC681x cell voltage registers.
     The function is used to read the parsed Cell voltages codes of the LTC681x.
@@ -636,10 +570,10 @@ def LTC681x_rdcv(reg: int, total_ic: int) -> int:
     c_ic = 0
 
     if reg == 0:
-        for cell_reg in range(1, BMS_IC[0].ic_reg.num_cv_reg + 1):
+        for cell_reg in range(1, config.BMS_IC[0].ic_reg.num_cv_reg + 1):
             cell_data = LTC681x_rdcv_reg(cell_reg, total_ic)
             for current_ic in range(total_ic):
-                if not BMS_IC[current_ic].isospi_reverse:
+                if not config.BMS_IC[current_ic].isospi_reverse:
                     c_ic = current_ic
                 else:
                     c_ic = total_ic - current_ic - 1
@@ -648,13 +582,13 @@ def LTC681x_rdcv(reg: int, total_ic: int) -> int:
                     current_ic,
                     cell_reg,
                     cell_data,
-                    BMS_IC[c_ic].cells.c_codes,
-                    BMS_IC[c_ic].cells.pec_match,
+                    config.BMS_IC[c_ic].cells.c_codes,
+                    config.BMS_IC[c_ic].cells.pec_match,
                 )
     else:
         cell_data = LTC681x_rdcv_reg(reg, total_ic)
         for current_ic in range(total_ic):
-            if not BMS_IC[current_ic].isospi_reverse:
+            if not config.BMS_IC[current_ic].isospi_reverse:
                 c_ic = current_ic
             else:
                 c_ic = total_ic - current_ic - 1
@@ -663,8 +597,8 @@ def LTC681x_rdcv(reg: int, total_ic: int) -> int:
                 current_ic,
                 reg,
                 cell_data[8 * c_ic :],
-                BMS_IC[c_ic].cells.c_codes,
-                BMS_IC[c_ic].cells.pec_match,
+                config.BMS_IC[c_ic].cells.c_codes,
+                config.BMS_IC[c_ic].cells.pec_match,
             )
 
     LTC681x_check_pec(total_ic, CELL)
@@ -673,7 +607,6 @@ def LTC681x_rdcv(reg: int, total_ic: int) -> int:
 
 
 def LTC681x_rdaux(reg: int, total_ic: int) -> int:
-    global BMS_IC
     """
     The function is used to read the parsed GPIO codes of the LTC681x.
     This function will send the requested read commands, parse the data,
@@ -688,10 +621,10 @@ def LTC681x_rdaux(reg: int, total_ic: int) -> int:
     c_ic = 0
 
     if reg == 0:
-        for gpio_reg in range(1, BMS_IC[0].ic_reg.num_gpio_reg + 1):
+        for gpio_reg in range(1, config.BMS_IC[0].ic_reg.num_gpio_reg + 1):
             data = LTC681x_rdaux_reg(gpio_reg, total_ic)
             for current_ic in range(total_ic):
-                if not BMS_IC[current_ic].isospi_reverse:
+                if not config.BMS_IC[current_ic].isospi_reverse:
                     c_ic = current_ic
                 else:
                     c_ic = total_ic - current_ic - 1
@@ -700,19 +633,23 @@ def LTC681x_rdaux(reg: int, total_ic: int) -> int:
                     current_ic,
                     gpio_reg,
                     data,
-                    BMS_IC[c_ic].aux.a_codes,
-                    BMS_IC[c_ic].aux.pec_match,
+                    config.BMS_IC[c_ic].aux.a_codes,
+                    config.BMS_IC[c_ic].aux.pec_match,
                 )
     else:
         data = LTC681x_rdaux_reg(reg, total_ic)
         for current_ic in range(total_ic):
-            if not BMS_IC[current_ic].isospi_reverse:
+            if not config.BMS_IC[current_ic].isospi_reverse:
                 c_ic = current_ic
             else:
                 c_ic = total_ic - current_ic - 1
 
             pec_error += parse_cells(
-                current_ic, reg, data, BMS_IC[c_ic].aux.a_codes, BMS_IC[c_ic].aux.pec_match
+                current_ic,
+                reg,
+                data,
+                config.BMS_IC[c_ic].aux.a_codes,
+                config.BMS_IC[c_ic].aux.pec_match,
             )
 
     LTC681x_check_pec(total_ic, AUX)
@@ -732,17 +669,25 @@ def LTC681x_rdaux_reg(reg: int, total_ic: int):
     REG_LEN = 8  # Number of bytes in the register + 2 bytes for the PEC
 
     if reg == 1:  # Read back auxiliary group A
-        cmd_68(CMD["RDAUXA"])
+        cmd = CMD["RDAUXA"]
     elif reg == 2:  # Read back auxiliary group B
-        cmd_68(CMD["RDAUXB"])
+        cmd = CMD["RDAUXB"]
     elif reg == 3:  # Read back auxiliary group C
-        cmd_68(CMD["RDAUXC"])
+        cmd = CMD["RDAUXC"]
     elif reg == 4:  # Read back auxiliary group D
-        cmd_68(CMD["RDAUXD"])
+        cmd = CMD["RDAUXD"]
     else:  # Read back auxiliary group A
-        cmd_68(CMD["RDAUXA"])
+        cmd = CMD["RDAUXA"]
 
-    data = spi.readbytes(REG_LEN * total_ic)
+    cmdbit = [0, 0, 0, 0, 0] + cmd[:3] + cmd[3:]
+    pec = calcul_PEC(cmdbit)
+    word = [
+        bin2int(cmdbit[:8]),
+        bin2int(cmdbit[8:]),
+        bin2int(pec[:8]),
+        bin2int(pec[8:]),
+    ]
+    data = spi_write_read(word, REG_LEN * total_ic)
     return data
 
 
@@ -756,21 +701,29 @@ def LTC681x_rdcv_reg(reg: int, total_ic: int):
     REG_LEN = 8  # Number of bytes in each ICs register + 2 bytes for the PEC
 
     if reg == 1:  # 1: RDCVA
-        cmd_68(CMD["RDCVA"])
+        cmd = CMD["RDCVA"]
     elif reg == 2:  # 2: RDCVB
-        cmd_68(CMD["RDCVB"])
+        cmd = CMD["RDCVB"]
     elif reg == 3:  # 3: RDCVC
-        cmd_68(CMD["RDCVC"])
+        cmd = CMD["RDCVC"]
     elif reg == 4:  # 4: RDCVD
-        cmd_68(CMD["RDCVD"])
+        cmd = CMD["RDCVD"]
     elif reg == 5:  # 5: RDCVE
-        cmd_68(CMD["RDCVE"])
+        cmd = CMD["RDCVE"]
     elif reg == 6:  # 6: RDCVF
-        cmd_68(CMD["RDCVF"])
+        cmd = CMD["RDCVF"]
     else:
-        cmd_68(CMD["RDCVA"])
+        cmd = CMD["RDCVA"]
 
-    data = spi.readbytes(REG_LEN * total_ic)
+    cmdbit = [0, 0, 0, 0, 0] + cmd[:3] + cmd[3:]
+    pec = calcul_PEC(cmdbit)
+    word = [
+        bin2int(cmdbit[:8]),
+        bin2int(cmdbit[8:]),
+        bin2int(pec[:8]),
+        bin2int(pec[8:]),
+    ]
+    data = spi_write_read(word, REG_LEN * total_ic)
     return data
 
 
@@ -821,9 +774,8 @@ def parse_cells(
 
 def LTC681x_rdstat(
     reg: int,  # Determines which Stat register is read back.
-    total_ic: int  # The number of ICs in the system.
-    ) -> int:
-    global BMS_IC
+    total_ic: int,  # The number of ICs in the system.
+) -> int:
     """
     Reads and parses the LTC681x stat registers.
 
@@ -853,7 +805,7 @@ def LTC681x_rdstat(
 
             for current_ic in range(total_ic):
                 # Executes for every LTC681x in the daisy chain
-                if not BMS_IC[0].isospi_reverse:
+                if not config.BMS_IC[0].isospi_reverse:
                     c_ic = current_ic
                 else:
                     c_ic = total_ic - current_ic - 1
@@ -862,20 +814,22 @@ def LTC681x_rdstat(
                     for current_stat in range(STAT_IN_REG):
                         # This loop parses the read back data into Status registers
                         parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
-                        BMS_IC[c_ic].stat.stat_codes[current_stat] = parsed_stat
+                        config.BMS_IC[c_ic].stat.stat_codes[current_stat] = parsed_stat
                         data_counter += 2
                 elif stat_reg == 2:
                     parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
                     data_counter += 2
-                    BMS_IC[c_ic].stat.stat_codes[3] = parsed_stat
-                    BMS_IC[c_ic].stat.flags[0] = data[data_counter]
+                    config.BMS_IC[c_ic].stat.stat_codes[3] = parsed_stat
+                    config.BMS_IC[c_ic].stat.flags[0] = data[data_counter]
                     data_counter += 1
-                    BMS_IC[c_ic].stat.flags[1] = data[data_counter]
+                    config.BMS_IC[c_ic].stat.flags[1] = data[data_counter]
                     data_counter += 1
-                    BMS_IC[c_ic].stat.flags[2] = data[data_counter]
+                    config.BMS_IC[c_ic].stat.flags[2] = data[data_counter]
                     data_counter += 1
-                    BMS_IC[c_ic].stat.mux_fail[0] = (data[data_counter] & 0x02) >> 1
-                    BMS_IC[c_ic].stat.thsd[0] = data[data_counter] & 0x01
+                    config.BMS_IC[c_ic].stat.mux_fail[0] = (
+                        data[data_counter] & 0x02
+                    ) >> 1
+                    config.BMS_IC[c_ic].stat.thsd[0] = data[data_counter] & 0x01
                     data_counter += 1
 
                 received_pec = (data[data_counter], data[data_counter + 1])
@@ -888,16 +842,16 @@ def LTC681x_rdstat(
                     pec_error = (
                         -1
                     )  # The pec_error variable is simply set negative if any PEC errors are detected
-                    BMS_IC[c_ic].stat.pec_match[stat_reg - 1] = 1
+                    config.BMS_IC[c_ic].stat.pec_match[stat_reg - 1] = 1
                 else:
-                    BMS_IC[c_ic].stat.pec_match[stat_reg - 1] = 0
+                    config.BMS_IC[c_ic].stat.pec_match[stat_reg - 1] = 0
 
                 data_counter += 2  # Because the transmitted PEC code is 2 bytes long, increment the data_counter by 2 bytes
     else:
         data = LTC681x_rdstat_reg(reg, total_ic)
         for current_ic in range(total_ic):
             # Executes for every LTC681x in the daisy chain
-            if not BMS_IC[0].isospi_reverse:
+            if not config.BMS_IC[0].isospi_reverse:
                 c_ic = current_ic
             else:
                 c_ic = total_ic - current_ic - 1
@@ -906,20 +860,20 @@ def LTC681x_rdstat(
                 for current_stat in range(STAT_IN_REG):
                     # This loop parses the read back data into Status voltages
                     parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
-                    BMS_IC[c_ic].stat.stat_codes[current_stat] = parsed_stat
+                    config.BMS_IC[c_ic].stat.stat_codes[current_stat] = parsed_stat
                     data_counter += 2
             elif reg == 2:
                 parsed_stat = data[data_counter] + (data[data_counter + 1] << 8)
                 data_counter += 2
-                BMS_IC[c_ic].stat.stat_codes[3] = parsed_stat
-                BMS_IC[c_ic].stat.flags[0] = data[data_counter]
+                config.BMS_IC[c_ic].stat.stat_codes[3] = parsed_stat
+                config.BMS_IC[c_ic].stat.flags[0] = data[data_counter]
                 data_counter += 1
-                BMS_IC[c_ic].stat.flags[1] = data[data_counter]
+                config.BMS_IC[c_ic].stat.flags[1] = data[data_counter]
                 data_counter += 1
-                BMS_IC[c_ic].stat.flags[2] = data[data_counter]
+                config.BMS_IC[c_ic].stat.flags[2] = data[data_counter]
                 data_counter += 1
-                BMS_IC[c_ic].stat.mux_fail[0] = (data[data_counter] & 0x02) >> 1
-                BMS_IC[c_ic].stat.thsd[0] = data[data_counter] & 0x01
+                config.BMS_IC[c_ic].stat.mux_fail[0] = (data[data_counter] & 0x02) >> 1
+                config.BMS_IC[c_ic].stat.thsd[0] = data[data_counter] & 0x01
                 data_counter += 1
 
             received_pec = (data[data_counter], data[data_counter + 1])
@@ -930,9 +884,9 @@ def LTC681x_rdstat(
             if received_pec != data_pec:
                 pec_error = -1
                 # The pec_error variable is simply set negative if any PEC errors are detected
-                BMS_IC[c_ic].stat.pec_match[reg - 1] = 1
+                config.BMS_IC[c_ic].stat.pec_match[reg - 1] = 1
             else:
-                BMS_IC[c_ic].stat.pec_match[reg - 1] = 0
+                config.BMS_IC[c_ic].stat.pec_match[reg - 1] = 0
 
             data_counter += 2
 
@@ -957,20 +911,27 @@ def LTC681x_rdstat_reg(
     REG_LEN = 8  # number of bytes in the register + 2 bytes for the PEC
 
     if reg == 1:  # Read back status group A
-        cmd_68(CMD["RDSTATA"])
+        cmd = CMD["RDSTATA"]
     elif reg == 2:  # Read back status group B
-        cmd_68(CMD["RDSTATB"])
+        cmd = CMD["RDSTATB"]
     else:  # Read back status group A
-        cmd_68(CMD["RDSTATA"])
+        cmd = CMD["RDSTATA"]
 
-    data = spi.readbytes(REG_LEN * total_ic)
+    cmdbit = [0, 0, 0, 0, 0] + cmd[:3] + cmd[3:]
+    pec = calcul_PEC(cmdbit)
+    word = [
+        bin2int(cmdbit[:8]),
+        bin2int(cmdbit[8:]),
+        bin2int(pec[:8]),
+        bin2int(pec[8:]),
+    ]
+    data = spi_write_read(word, REG_LEN * total_ic)
     return data
 
 
 def LTC681x_init_cfg(
     total_ic: int,  # Number of ICs in the system
 ) -> None:
-    global BMS_IC
     """
     Helper function to initialize CFG variables
 
@@ -979,7 +940,7 @@ def LTC681x_init_cfg(
     """
     for current_ic in range(total_ic):
         for j in range(6):
-            BMS_IC[current_ic].config.tx_data[j] = 0
+            config.BMS_IC[current_ic].config.tx_data[j] = 0
 
 
 def LTC681x_set_cfgr(
@@ -992,7 +953,6 @@ def LTC681x_set_cfgr(
     uv: int,  # The UV value
     ov: int,  # The OV value
 ) -> None:
-    global BMS_IC
     """
     Helper function to set CFGR variable
 
@@ -1006,7 +966,7 @@ def LTC681x_set_cfgr(
     :param uv: The UV value
     :param ov: The OV value
     """
-    LTC681x_set_cfgr_refon(nIC,refon)
+    LTC681x_set_cfgr_refon(nIC, refon)
     LTC681x_set_cfgr_adcopt(nIC, adcopt)
     LTC681x_set_cfgr_gpio(nIC, gpio)
     LTC681x_set_cfgr_dis(nIC, dcc)
@@ -1016,92 +976,84 @@ def LTC681x_set_cfgr(
 
 
 def LTC681x_set_cfgr_refon(nIC, refon):
-    global BMS_IC
     """
     Helper function to set the REFON bit
     """
     if refon:
-        BMS_IC[nIC].config.tx_data[0] |= 0x04
+        config.BMS_IC[nIC].config.tx_data[0] |= 0x04
     else:
-        BMS_IC[nIC].config.tx_data[0] &= 0xFB
+        config.BMS_IC[nIC].config.tx_data[0] &= 0xFB
 
 
 def LTC681x_set_cfgr_adcopt(nIC, adcopt):
-    global BMS_IC
     """
     Helper function to set the ADCOPT bit
     """
     if adcopt:
-        BMS_IC[nIC].config.tx_data[0] |= 0x01
+        config.BMS_IC[nIC].config.tx_data[0] |= 0x01
     else:
-        BMS_IC[nIC].config.tx_data[0] &= 0xFE
+        config.BMS_IC[nIC].config.tx_data[0] &= 0xFE
 
 
 def LTC681x_set_cfgr_gpio(nIC, gpio):
-    global BMS_IC
     """
     Helper function to set GPIO bits
     """
     for i in range(5):
         if gpio[i]:
-            BMS_IC[nIC].config.tx_data[0] |= 0x01 << (i + 3)
+            config.BMS_IC[nIC].config.tx_data[0] |= 0x01 << (i + 3)
         else:
-            BMS_IC[nIC].config.tx_data[0] &= ~(0x01 << (i + 3))
+            config.BMS_IC[nIC].config.tx_data[0] &= ~(0x01 << (i + 3))
 
 
 def LTC681x_set_cfgr_dis(nIC, dcc):
-    global BMS_IC
     """
     Helper function to control discharge
     """
     for i in range(8):
         if dcc[i]:
-            BMS_IC[nIC].config.tx_data[4] |= 0x01 << i
+            config.BMS_IC[nIC].config.tx_data[4] |= 0x01 << i
         else:
-            BMS_IC[nIC].config.tx_data[4] &= ~(0x01 << i)
+            config.BMS_IC[nIC].config.tx_data[4] &= ~(0x01 << i)
     for i in range(4):
         if dcc[i + 8]:
-            BMS_IC[nIC].config.tx_data[5] |= 0x01 << i
+            config.BMS_IC[nIC].config.tx_data[5] |= 0x01 << i
         else:
-            BMS_IC[nIC].config.tx_data[5] &= ~(0x01 << i)
+            config.BMS_IC[nIC].config.tx_data[5] &= ~(0x01 << i)
 
 
-def LTC681x_set_cfgr_dcto(nIC,dcto):
-    global BMS_IC
+def LTC681x_set_cfgr_dcto(nIC, dcto):
     """
     Helper function to control discharge time value
     """
     for i in range(4):
         if dcto[i]:
-            BMS_IC[nIC].config.tx_data[5] |= 0x01 << (i + 4)
+            config.BMS_IC[nIC].config.tx_data[5] |= 0x01 << (i + 4)
         else:
-            BMS_IC[nIC].config.tx_data[5] &= ~(0x01 << (i + 4))
+            config.BMS_IC[nIC].config.tx_data[5] &= ~(0x01 << (i + 4))
 
 
-def LTC681x_set_cfgr_uv(nIC,uv):
-    global BMS_IC
+def LTC681x_set_cfgr_uv(nIC, uv):
     """
     Helper function to set UV value in CFG register
     """
     tmp = (uv // 16) - 1
-    BMS_IC[nIC].config.tx_data[1] = 0x00FF & tmp
-    BMS_IC[nIC].config.tx_data[2] &= 0xF0
-    BMS_IC[nIC].config.tx_data[2] |= (0x0F00 & tmp) >> 8
+    config.BMS_IC[nIC].config.tx_data[1] = 0x00FF & tmp
+    config.BMS_IC[nIC].config.tx_data[2] &= 0xF0
+    config.BMS_IC[nIC].config.tx_data[2] |= (0x0F00 & tmp) >> 8
 
 
-def LTC681x_set_cfgr_ov(nIC,ov):
-    global BMS_IC
+def LTC681x_set_cfgr_ov(nIC, ov):
     """
     Helper function to set OV value in CFG register
     """
     tmp = ov // 16
-    BMS_IC[nIC].config.tx_data[3] = 0x00FF & (tmp >> 4)
-    BMS_IC[nIC].config.tx_data[2] &= 0x0F
-    BMS_IC[nIC].config.tx_data[2] |= (0x000F & tmp) << 4
+    config.BMS_IC[nIC].config.tx_data[3] = 0x00FF & (tmp >> 4)
+    config.BMS_IC[nIC].config.tx_data[2] &= 0x0F
+    config.BMS_IC[nIC].config.tx_data[2] |= (0x000F & tmp) << 4
 
 
 def LTC681x_reset_crc_count(total_ic: int):
-    global BMS_IC
     """
     Helper Function to reset PEC counters.
 
@@ -1113,16 +1065,16 @@ def LTC681x_reset_crc_count(total_ic: int):
     None
     """
     for current_ic in range(total_ic):
-        BMS_IC[current_ic].crc_count.pec_count = 0
-        BMS_IC[current_ic].crc_count.cfgr_pec = 0
+        config.BMS_IC[current_ic].crc_count.pec_count = 0
+        config.BMS_IC[current_ic].crc_count.cfgr_pec = 0
         for i in range(6):
-            BMS_IC[current_ic].crc_count.cell_pec[i] = 0
+            config.BMS_IC[current_ic].crc_count.cell_pec[i] = 0
 
         for i in range(4):
-            BMS_IC[current_ic].crc_count.aux_pec[i] = 0
+            config.BMS_IC[current_ic].crc_count.aux_pec[i] = 0
 
         for i in range(2):
-            BMS_IC[current_ic].crc_count.stat_pec[i] = 0
+            config.BMS_IC[current_ic].crc_count.stat_pec[i] = 0
 
 
 def LTC681x_pollAdc() -> int:
@@ -1133,21 +1085,22 @@ def LTC681x_pollAdc() -> int:
         int: The counter value.
     """
     counter = 0
-    finished = 0
-    current_time = 0
-    cmd_68(CMD["PLADC"])
-    while counter < 200000 and finished == 0:
-        current_time = spi.readbytes(1)
-        if current_time[0] > 0:
-            finished = 1
-        else:
-            counter += 10
-
-    return counter
+    cmd = CMD["PLADC"]
+    cmdbit = [0, 0, 0, 0, 0] + cmd[:3] + cmd[3:]
+    pec = calcul_PEC(cmdbit)
+    word = [
+        bin2int(cmdbit[:8]),
+        bin2int(cmdbit[8:]),
+        bin2int(pec[:8]),
+        bin2int(pec[8:]),
+    ]
+    data = spi_write_read(word, 20000)
+    while counter < 20000 and (not (data[counter] > 0)):
+        counter += 1
+    return counter * 10
 
 
 def LTC681x_clear_discharge(total_ic: int) -> None:
-    global BMS_IC
     """
     Clears all of the DCC bits in the configuration registers.
 
@@ -1156,7 +1109,88 @@ def LTC681x_clear_discharge(total_ic: int) -> None:
         ic (List[cell_asic]): A list of cell_asic objects that will store the data.
     """
     for i in range(total_ic):
-        BMS_IC[i].config.tx_data[4] = 0
-        BMS_IC[i].config.tx_data[5] &= 0xF0
-        BMS_IC[i].configb.tx_data[0] &= 0x0F
-        BMS_IC[i].configb.tx_data[1] &= 0xF0
+        config.BMS_IC[i].config.tx_data[4] = 0
+        config.BMS_IC[i].config.tx_data[5] &= 0xF0
+        config.BMS_IC[i].configb.tx_data[0] &= 0x0F
+        config.BMS_IC[i].configb.tx_data[1] &= 0xF0
+
+
+def LTC681x_wrcomm(total_ic: int):
+    """
+    Writes the comm register.
+
+    Args:
+        total_ic (int): The number of ICs being written to.
+    """
+    cmd = CMD["WRCOMM"]
+    write_buffer = []
+    write_count = 0
+
+    for current_ic in range(total_ic):
+        if not config.BMS_IC[0].isospi_reverse:
+            c_ic = current_ic
+        else:
+            c_ic = total_ic - current_ic - 1
+
+        for data in range(6):
+            write_buffer.append(config.BMS_IC[c_ic].com.tx_data[data])
+            write_count += 1
+
+    write_68(total_ic, cmd, write_buffer)
+
+
+def LTC681x_rdcomm(total_ic: int) -> int:
+    """
+    Reads COMM registers of a LTC681x daisy chain.
+
+    Args:
+        total_ic (int): Number of ICs in the system.
+    Returns:
+        int: PEC error status.
+    """
+    cmd = CMD["RDCOMM"]
+    read_buffer = [0] * 256
+    pec_error = 0
+
+    read_buffer, pec_error = read_68(total_ic, cmd)
+
+    for current_ic in range(total_ic):
+        if not config.BMS_IC[0].isospi_reverse:
+            c_ic = current_ic
+        else:
+            c_ic = total_ic - current_ic - 1
+
+        for byte in range(8):
+            config.BMS_IC[c_ic].com.rx_data[byte] = read_buffer[byte + (8 * current_ic)]
+
+        calc_pec = pec15_calc(6, read_buffer[8 * current_ic :])
+        data_pec = (
+            read_buffer[6 + (8 * current_ic)],
+            read_buffer[7 + (8 * current_ic)],
+        )
+
+        if calc_pec != data_pec:
+            config.BMS_IC[c_ic].com.rx_pec_match = 1
+        else:
+            config.BMS_IC[c_ic].com.rx_pec_match = 0
+
+    return pec_error
+
+
+def LTC681x_stcomm(len: int):
+    """
+    Shifts data in COMM register out over LTC681x SPI/I2C port.
+
+    Args:
+        len (int): Length of data to be transmitted.
+    """
+    cmd = CMD["STCOMM"]
+    cmdbit = [0, 0, 0, 0, 0] + cmd[:3] + cmd[3:]
+    pec = calcul_PEC(cmdbit)
+    word = [
+        bin2int(cmdbit[:8]),
+        bin2int(cmdbit[8:]),
+        bin2int(pec[:8]),
+        bin2int(pec[8:]),
+    ]
+    spi_write_read(word, len * 3)

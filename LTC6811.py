@@ -1,3 +1,6 @@
+### Fichier principal permettant la communication avec le processeur LTC6811
+
+
 from LTC681x import *
 import config
 
@@ -231,36 +234,62 @@ def reset_pec_counter():
     print_pec_error_count()
 
 
-def write_byte_i2c_communication():
+def write_byte_i2c_communication(data: List[int]):
     """
     Writes a byte via I2C communication on the GPIO Ports (using I2C eeprom 24LC025).
     Ensure to set the GPIO bits to 1 in the CFG register group.
+
+    Args
+    data : The 6 bytes array of data to send
     """
     for current_ic in range(TOTAL_IC):
-        # Communication control bits and communication data bytes. Refer to the data sheet.
-        config.BMS_IC[current_ic].com.tx_data[0] = 0x6A
-        # Icom Start(6) + I2C_address D0 (0xA0)
-        config.BMS_IC[current_ic].com.tx_data[1] = 0x08  # Fcom master NACK(8)
-        config.BMS_IC[current_ic].com.tx_data[2] = 0x00
-        # Icom Blank (0) + eeprom address D1 (0x00)
-        config.BMS_IC[current_ic].com.tx_data[3] = 0x08  # Fcom master NACK(8)
-        config.BMS_IC[current_ic].com.tx_data[4] = 0x01
-        # Icom Blank (0) + data D2 (0x11)
-        config.BMS_IC[current_ic].com.tx_data[5] = 0x19  # Fcom master NACK + Stop(9)
+        for k in range(len(data) // 2):
+            config.BMS_IC[current_ic].com.tx_data[2 * k] = data[2 * k]
+            config.BMS_IC[current_ic].com.tx_data[2 * k + 1] = data[2 * k + 1]
 
     wakeup_sleep(TOTAL_IC)
     LTC681x_wrcomm(TOTAL_IC)  # Write to comm register
     print_wrcomm()  # Print transmitted data from the comm register
 
     wakeup_idle(TOTAL_IC)
-    LTC681x_stcomm(
-        3
-    )  # data length=3 // initiates communication between master and the I2C slave
+    LTC681x_stcomm(len(data) // 2)
+    # data length=3 // initiates communication between master and the I2C slave
 
     wakeup_idle(TOTAL_IC)
     error = LTC681x_rdcomm(TOTAL_IC)  # Read from comm register
     check_error(error)
     print_rxcomm()  # Print received data into the comm register
+
+
+def select_mux_pin(pin: int):
+    """Select the pin that will be readed among all the 18 pin of the two mux connected to the BMS
+    Args
+    pin : The number of the pin that will be readed
+    ***HOMEMADE***
+    """
+    data = []
+    START = [0, 1, 1, 0]
+    BLANK = [0, 0, 0, 0]
+    NACK = [1, 0, 0, 0]
+    NACKSTOP = [1, 0, 0, 1]
+    ADG728 = [1, 0, 0, 1, 1]  # Adress of Mux ADG728 (see datasheet)
+    RW = [0]  # Read Write bit is low for writing
+    PINBIN = [0, 0, 0, 0, 0, 0, 0, 0]
+    if 0 < pin <= 8:  # Select the first or the second mux
+        ADR = [0, 0]
+        PINBIN[7 - pin + 1] = 1
+    elif 8 < pin <= 16:
+        ADR = [0, 1]
+        PINBIN[7 - (pin - 8) + 1] = 1
+    else:
+        print("N° de pin invalide")
+        return
+    data.append(bin2int(START + ADG728[4:]))
+    data.append(bin2int(ADG728[4:] + ADR + RW + NACK))
+    data.append(bin2int(BLANK + PINBIN[:4]))
+    data.append(bin2int(PINBIN[4:] + NACKSTOP))
+
+    write_byte_i2c_communication(data)
 
 
 ### Fonctions d'affichage :

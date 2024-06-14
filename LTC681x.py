@@ -1177,12 +1177,12 @@ def LTC681x_rdcomm(total_ic: int) -> int:
     return pec_error
 
 
-def LTC681x_stcomm(len: int):
+def LTC681x_stcomm(tx_len: int):
     """
     Shifts data in COMM register out over LTC681x SPI/I2C port.
 
     Args:
-        len (int): Length of data to be transmitted.
+        tx_len (int): Length of data to be transmitted.
     """
     cmd = CMD["STCOMM"]
     cmdbit = [0, 0, 0, 0, 0] + cmd[:3] + cmd[3:]
@@ -1193,4 +1193,4 @@ def LTC681x_stcomm(len: int):
         bin2int(pec[:8]),
         bin2int(pec[8:]),
     ]
-    spi_write_read(word, len * 3)
+    spi_write_read(word, tx_len * 3)

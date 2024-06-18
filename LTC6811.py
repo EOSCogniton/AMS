@@ -152,6 +152,7 @@ def init():
     LTC681x_reset_crc_count(TOTAL_IC)
     LTC6811_init_reg_limits(TOTAL_IC)
 
+
 ### Fonctions utiles :
 
 
@@ -198,10 +199,11 @@ def start_GPIO_mes():
     conv_time = LTC681x_pollAdc()
     print_conv_time(conv_time)
 
+
 def read_GPIO_v():
     """Read Auxiliary Voltage registers"""
-    wakeup_sleep(TOTAL_IC);
-    error = LTC681x_rdaux(SEL_ALL_REG,TOTAL_IC) # Set to read back all aux registers
+    wakeup_sleep(TOTAL_IC)
+    error = LTC681x_rdaux(SEL_ALL_REG, TOTAL_IC)  # Set to read back all aux registers
     check_error(error)
     print_aux(DATALOG_DISABLED)
 
@@ -431,23 +433,28 @@ def print_aux(datalog_en: int) -> None:
     Prints GPIO voltage codes and Vref2 voltage code onto the serial port.
 
     Args:
-        datalog_en (int): Flag to enable or disable data logging. 
+        datalog_en (int): Flag to enable or disable data logging.
                           If 0, prints formatted data. If non-zero, prints raw data.
     """
     for current_ic in range(TOTAL_IC):
         if datalog_en == 0:
             print(f" IC {current_ic + 1}: ", end="")
-            
+
             for i in range(5):
-                print(f" GPIO-{i + 1}:{config.BMS_IC[current_ic].aux.a_codes[i] * 0.0001:.4f},", end="")
-            
+                print(
+                    f" GPIO-{i + 1}:{config.BMS_IC[current_ic].aux.a_codes[i] * 0.0001:.4f},",
+                    end="",
+                )
+
             print(f" Vref2:{config.BMS_IC[current_ic].aux.a_codes[5] * 0.0001:.4f}")
         else:
             print(f"AUX IC {current_ic + 1}: ", end="")
 
             for i in range(6):
-                print(f"{config.BMS_IC[current_ic].aux.a_codes[i] * 0.0001:.4f},", end="")
-                
+                print(
+                    f"{config.BMS_IC[current_ic].aux.a_codes[i] * 0.0001:.4f},", end=""
+                )
+
         print()
 
 

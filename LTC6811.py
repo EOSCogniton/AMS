@@ -100,8 +100,7 @@ def LTC6811_set_discharge(Cell: int, total_ic: int) -> None:
             break
 
 
-if __name__ == "__main__":
-
+def init():
     ########################################################
     # Global Battery Variables received from 681x commands.
     # These variables store the results from the LTC6811
@@ -198,6 +197,13 @@ def start_GPIO_mes():
     LTC681x_adax(ADC_CONVERSION_MODE, AUX_CH_TO_CONVERT)
     conv_time = LTC681x_pollAdc()
     print_conv_time(conv_time)
+
+def read_GPIO_v():
+    """Read Auxiliary Voltage registers"""
+    wakeup_sleep(TOTAL_IC);
+    error = LTC681x_rdaux(SEL_ALL_REG,TOTAL_IC) # Set to read back all aux registers
+    check_error(error)
+    print_aux(DATALOG_DISABLED)
 
 
 def enable_DSC(pin: int):
@@ -418,3 +424,32 @@ def print_rxcomm():
             f", Received PEC: ({config.BMS_IC[current_ic].com.rx_data[6]}, {config.BMS_IC[current_ic].com.rx_data[7]})"
         )
         print("\n")
+
+
+def print_aux(datalog_en: int) -> None:
+    """
+    Prints GPIO voltage codes and Vref2 voltage code onto the serial port.
+
+    Args:
+        datalog_en (int): Flag to enable or disable data logging. 
+                          If 0, prints formatted data. If non-zero, prints raw data.
+    """
+    for current_ic in range(TOTAL_IC):
+        if datalog_en == 0:
+            print(f" IC {current_ic + 1}: ", end="")
+            
+            for i in range(5):
+                print(f" GPIO-{i + 1}:{config.BMS_IC[current_ic].aux.a_codes[i] * 0.0001:.4f},", end="")
+            
+            print(f" Vref2:{config.BMS_IC[current_ic].aux.a_codes[5] * 0.0001:.4f}")
+        else:
+            print(f"AUX IC {current_ic + 1}: ", end="")
+
+            for i in range(6):
+                print(f"{config.BMS_IC[current_ic].aux.a_codes[i] * 0.0001:.4f},", end="")
+                
+        print()
+
+
+if __name__ == "__main__":
+    init()

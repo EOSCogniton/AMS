@@ -4,53 +4,76 @@
 import smbus2
 from typing import List
 
+
 def bin2int(binval: List[bool]):
     st = ""
     for x in binval:
         st += str(x)
     return int(st, 2)
 
+
 # I2C channel 0 is connected to the GPIO pins
-channel = 0
+I2C_CHANNEL = 1  # i2cdetect -y 1 to detect
 
 ADR = [1, 0, 0, 1, 0, 0, 0]  # Adresse de l'ADC, avec le pin address mis au gnd
-SELECT_CFG = [0, 0, 0, 0, 0, 0, 0, 1]
-SELECT_CONV = [0, 0, 0, 0, 0, 0, 0, 0]
+CONFIG_REG = [0, 0, 0, 0, 0, 0, 0, 1]
+DATA_REG = [0, 0, 0, 0, 0, 0, 0, 0]
 CHANNEL = {0: [1, 0, 0], 1: [1, 0, 1], 2: [1, 1, 0], 3: [1, 1, 1]}
+FSR = 6.144  # V Full Scale rate (valeur maximale de tension)
+RESISTOR = 47  # Ohm (Valeur de résistance en entrée de channel)
+ENTRY = 3
 
 # Initialize I2C (SMBus)
-bus = smbus2.SMBus(channel)
+bus = smbus2.SMBus(I2C_CHANNEL)
 
 
-def init(entry: int):
-
-    bit1 = SELECT_CFG
+def set_channel(entry: int):
+    address = bin2int(ADR + [0])  # R/W bit to 0 to Write
+    reg = bin2int(CONFIG_REG)
     if not (0 <= entry <= 3):
         print("N° d'entrée invalide")
         return
-    bit2 = [1] + CHANNEL[entry] + [0, 0, 0] + [0]
+    bit1 = [1] + CHANNEL[entry] + [0, 0, 0] + [0]
     # Premier bit : éteint ou allumé
     # 2-3-4 bit : sélection du channel d'entrée (possibilité de faire du différentiel, voir datasheet)
     # 5-6-7 bit : sélection de la tension max (ici 6V)
     # 8 bit : mode (conversion en continu ou one shot, ici en continu)
-    bit3 = [1, 0, 0] + [0] + [0] + [0] + [1, 1]
+    bit2 = [1, 0, 0] + [0] + [0] + [0] + [1, 1]
     # 1-2-3 bit : Sélection du data rate
     # 4 bit : Mode de comparateur
     # 5 bit : Polarité de comparateur
     # 6 bit : Mode de trigger du comparateur
     # 7-8 bit : nombre de trigger nécessaire pour activer le alert/ready (non utilisé)
-    initmsg = [bin2int(bit1),bin2int(bit2),bin2int(bit3)]
+    word = bin2int(bit1 + bit2)
+    bus.write_word_data(address, reg, word)
 
 
-# Create a sawtooth wave 16 times
-for i in range(0x10000):
-    pass
-    # Create our 12-bit number representing relative voltage
-    voltage = i & 0xFFF
+def enable_read():
+    address = bin2int(ADR + [0])  # R/W bit high to read
+    reg = DATA_REG
+    bus.write_byte(address, reg)
 
-    # Shift everything left by 4 bits and separate bytes
-    msg = (voltage & 0xFF0) >> 4
-    msg = [msg, (msg & 0xF) << 4]
 
-    # Write out I2C command: address, reg_write_dac, msg[0], msg[1]
-    bus.write_i2c_block_data(address, reg_write_dac, msg)
+def read_value():
+    global VALUE
+    addr = bin2int(ADR + [1])
+    msg = smbus2.i2c_msg.read(addr, 2)
+    bus.i2c_rdwr(msg)
+    VALUE = bin2int(msg[0][1:] + msg[1]) * FSR / (2**15)
+
+
+def convert_current():
+    return VALUE / RESISTOR
+
+def init():
+    global VALUE  # Registre dans lequel on stocke la valeur en tension
+    VALUE = 0
+    set_channel(ENTRY)
+    enable_read()
+    print("Valeur de tension initiale :", VALUE, " V")
+    print("Valeur en courant : ", convert_current(), " A")
+
+
+
+if __name__ == "__main__":
+    init()

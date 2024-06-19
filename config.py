@@ -97,6 +97,7 @@ class CellASIC:
         self.crc_count = PECCounter()
         self.ic_reg = RegisterCfg()
         self.system_open_wire: int = 0
+        self.temp = [0] * 18
 
 
 def init(total_ic):

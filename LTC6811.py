@@ -156,93 +156,107 @@ def init():
 ### Fonctions utiles :
 
 
-def write_read_cfg():
+def write_read_cfg(enable_read=True):
     """Write and Read Configuration Register"""
     wakeup_sleep(TOTAL_IC)
     LTC681x_wrcfg(TOTAL_IC)  # Write into Configuration Register
-    print_wrconfig()
+    if enable_read:
+        print_wrconfig()
     wakeup_idle(TOTAL_IC)
+
     error = LTC681x_rdcfg(TOTAL_IC)  # Read Configuration Register
     check_error(error)
-    print_rxconfig()
+    if enable_read:
+        print_rxconfig()
 
 
-def read_cfg():
+def read_cfg(enable_read=True):
     """Read Configuration Register"""
     wakeup_sleep(TOTAL_IC)
     error = LTC681x_rdcfg(TOTAL_IC)
     check_error(error)
-    print_rxconfig()
+    if enable_read:
+        print_rxconfig()
 
 
-def start_cell_mes():
+def start_cell_mes(enable_read=True):
     """Start Cell ADC Measurement"""
     wakeup_sleep(TOTAL_IC)
     LTC681x_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT)
     conv_time = LTC681x_pollAdc()
-    print_conv_time(conv_time)
+    if enable_read:
+        print_conv_time(conv_time)
 
 
-def read_cell_v():
+def read_cell_v(enable_read=True):
     """Read Cell Voltage Registers"""
     wakeup_sleep(TOTAL_IC)
     error = LTC681x_rdcv(SEL_ALL_REG, TOTAL_IC)
     # Set to read back all cell voltage registers
     check_error(error)
-    print_cells(DATALOG_DISABLED)
+    if enable_read:
+        print_cells(DATALOG_DISABLED)
 
 
-def start_GPIO_mes():
+def start_GPIO_mes(enable_read=True):
     """Start GPIO ADC Measurement"""
     wakeup_sleep(TOTAL_IC)
+
     LTC681x_adax(ADC_CONVERSION_MODE, AUX_CH_TO_CONVERT)
     conv_time = LTC681x_pollAdc()
-    print_conv_time(conv_time)
+    if enable_read:
+        print_conv_time(conv_time)
 
 
-def read_GPIO_v():
+def read_GPIO_v(enable_read=True):
     """Read Auxiliary Voltage registers"""
     wakeup_sleep(TOTAL_IC)
     error = LTC681x_rdaux(SEL_ALL_REG, TOTAL_IC)  # Set to read back all aux registers
     check_error(error)
-    print_aux(DATALOG_DISABLED)
+    if enable_read:
+        print_aux(DATALOG_DISABLED)
 
 
-def enable_DSC(pin: int):
+def enable_DSC(pin: int, enable_read=True):
     """Enable a discharge transistor
     cell : the cell to discharge"""
     wakeup_sleep(TOTAL_IC)
     LTC6811_set_discharge(pin, TOTAL_IC)
     LTC681x_wrcfg(TOTAL_IC)
-    print_wrconfig()
+    if enable_read:
+        print_wrconfig()
     wakeup_idle(TOTAL_IC)
     error = LTC681x_rdcfg(TOTAL_IC)
     check_error(error)
-    print_rxconfig()
+    if enable_read:
+        print_rxconfig()
 
 
-def clear_all_DSC():
+def clear_all_DSC(enable_read=True):
     """Clear all discharge transistors"""
     wakeup_sleep(TOTAL_IC)
     LTC681x_clear_discharge(TOTAL_IC)
     LTC681x_wrcfg(TOTAL_IC)
-    print_wrconfig()
+    if enable_read:
+        print_wrconfig()
     wakeup_idle(TOTAL_IC)
     error = LTC681x_rdcfg(TOTAL_IC)
     check_error(error)
-    print_rxconfig()
+    if enable_read:
+        print_rxconfig()
 
 
 def count_pec():
     print_pec_error_count()
 
 
-def reset_pec_counter():
+def reset_pec_counter(enable_read=True):
     LTC681x_reset_crc_count(TOTAL_IC)
-    print_pec_error_count()
+    if enable_read:
+        print_pec_error_count()
 
 
-def write_byte_i2c_communication(data: List[int]):
+def write_byte_i2c_communication(data: List[int], enable_read=True):
     """
     Writes a byte via I2C communication on the GPIO Ports (using I2C eeprom 24LC025).
     Ensure to set the GPIO bits to 1 in the CFG register group.
@@ -257,7 +271,8 @@ def write_byte_i2c_communication(data: List[int]):
 
     wakeup_sleep(TOTAL_IC)
     LTC681x_wrcomm(TOTAL_IC)  # Write to comm register
-    print_wrcomm()  # Print transmitted data from the comm register
+    if enable_read:
+        print_wrcomm()  # Print transmitted data from the comm register
 
     wakeup_idle(TOTAL_IC)
     LTC681x_stcomm(len(data) // 2)
@@ -266,7 +281,8 @@ def write_byte_i2c_communication(data: List[int]):
     wakeup_idle(TOTAL_IC)
     error = LTC681x_rdcomm(TOTAL_IC)  # Read from comm register
     check_error(error)
-    print_rxcomm()  # Print received data into the comm register
+    if enable_read:
+        print_rxcomm()  # Print received data into the comm register
 
 
 def select_mux_pin(pin: int):

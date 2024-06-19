@@ -194,7 +194,7 @@ def spi_write_read(tx_data: List[int], rx_len: int) -> None:
     Returns:
         List[int]: Array of readed value
     """
-    data = spi.xfer(tx_data + [255] * rx_len)
+    data = spi.xfer3(tx_data + [255] * rx_len)
     return data[len(tx_data) :]
 
 

@@ -12,6 +12,15 @@ def bin2int(binval: List[bool]):
     return int(st, 2)
 
 
+def int2bin(nb: int):
+    binst = bin(nb)
+    nb0 = 8 - len(binst) + 2
+    res = [0] * nb0
+    for x in binst[2:]:
+        res.append(int(x))
+    return res
+
+
 # I2C channel 0 is connected to the GPIO pins
 I2C_CHANNEL = 1  # i2cdetect -y 1 to detect
 
@@ -45,25 +54,28 @@ def set_channel(entry: int):
     # 6 bit : Mode de trigger du comparateur
     # 7-8 bit : nombre de trigger nécessaire pour activer le alert/ready (non utilisé)
     word = bin2int(bit1 + bit2)
-    bus.write_word_data(address, reg, word)
+    # bus.write_word_data(address, reg, word)
 
 
 def enable_read():
     address = bin2int(ADR + [0])  # R/W bit high to read
     reg = DATA_REG
-    bus.write_byte(address, reg)
+    # bus.write_byte(address, reg)
 
 
 def read_value():
     global VALUE
     addr = bin2int(ADR + [1])
     msg = smbus2.i2c_msg.read(addr, 2)
-    bus.i2c_rdwr(msg)
-    VALUE = bin2int(msg[0][1:] + msg[1]) * FSR / (2**15)
+    msg = [1, 2]
+    msgbin = [int2bin(msg[0]), int2bin(msg[1])]
+    # bus.i2c_rdwr(msg)
+    VALUE = bin2int(msgbin[0][1:] + msgbin[1])
 
 
-def convert_current():
-    return VALUE / RESISTOR
+def convert_current(value: int):
+    return value * FSR / (2**15) / RESISTOR
+
 
 def init():
     global VALUE  # Registre dans lequel on stocke la valeur en tension
@@ -71,8 +83,7 @@ def init():
     set_channel(ENTRY)
     enable_read()
     print("Valeur de tension initiale :", VALUE, " V")
-    print("Valeur en courant : ", convert_current(), " A")
-
+    print("Valeur en courant : ", convert_current(VALUE), " A")
 
 
 if __name__ == "__main__":

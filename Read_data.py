@@ -54,4 +54,5 @@ def print_data(n: int):
     print()
 
 
-print_data(0)
+for i in range(len(data) - 1):
+    print_data(i)

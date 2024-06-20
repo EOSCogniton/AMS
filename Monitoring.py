@@ -3,7 +3,6 @@ import ADC
 import CAN
 from read_temp import temp
 
-import csv
 import gpiod
 import time
 import datetime
@@ -20,27 +19,26 @@ NO_PROBLEM_OUTPUT.request(consumer="NO_PROBLEM_OUTPUT", type=gpiod.LINE_REQ_DIR_
 
 MAX_MUX_PIN = 12  # Nombre de thermistors
 
-READ_ENABLE = True  # Affichage dans la console
+READ_ENABLE = False  # Affichage dans la console
 
-LOW_WRITE = False  # Ecriture lente des données (ttes les 10s)
+MODE = "DISCHARGE"  # DISCHARGE, CHARGE or STANDBY
+
+OVERVOLTAGE = 4.18  # V
+UNDERVOLTAGE = 2.55  # V
+
+CHARGE_MAX_T = 47.5  # °C
+DISCHARGE_MAX_T = 57.5  # °C
+
+MAX_DISCHARGE_CURRENT = 95  # A
+
+LOW_WRITE_TIME = 10  # Temps d'écriture entre chaque donnée (en s) pour le LOW WRITE
 
 
 ### Functions
-def generate_data_file():
-    header = ["Date", "Current"]
-    for k in range(BMS.TOTAL_IC):
-        for i in range(12):
-            header.append("BMS" + str(k + 1) + " - Cell" + str(i + 1))
-        for j in range(MAX_MUX_PIN):
-            header.append("BMS" + str(k + 1) + " - Temp" + str(j + 1))
-    with open("data.csv", "w+", newline="") as file:
-        writer = csv.writer(file)
-
-        writer.writerow(header)
 
 
 def write_data():
-    data_raw = int(time.time() * 1e8).to_bytes(8) + ADC.VALUE.to_bytes(2)
+    data_raw = int(TIME * 1e8).to_bytes(8) + ADC.VALUE.to_bytes(2)
     for k in range(BMS.TOTAL_IC):
         for i in range(12):
             data_raw += BMS.config.BMS_IC[k].cells.c_codes[i].to_bytes(2)
@@ -54,9 +52,8 @@ def write_data():
 def store_temp(sensor: int):
     global BMS
     for k in range(BMS.TOTAL_IC):
-        BMS.config.BMS_IC[k].temp[sensor] = BMS.config.BMS_IC[k].aux.a_codes[
-            0
-        ]  # Les capteurs de temp sont sur le GPIO1 (a_codes[0])
+        BMS.config.BMS_IC[k].temp[sensor] = BMS.config.BMS_IC[k].aux.a_codes[0]
+        # Les capteurs de temp sont sur le GPIO1 (a_codes[0])
 
 
 def update_archive():
@@ -71,6 +68,18 @@ def update_archive():
             else:
                 os.rename("data.bin", "archive/" + str(date) + "-" + str(k) + ".bin")
                 written = True
+
+
+def print_error(error: str):
+    print(error)
+    with open("error.txt", "a") as f:
+        f.write(
+            "Date : "
+            + str(datetime.datetime.fromtimestamp(TIME))
+            + " - "
+            + error
+            + "\n"
+        )
 
 
 if __name__ == "__main__":
@@ -94,6 +103,7 @@ if __name__ == "__main__":
 
     while ACTIVE:
         try:
+            TIME = time.time()
             BMS.read_cell_v(READ_ENABLE)
             if MUX_PIN <= MAX_MUX_PIN:
                 MUX_PIN += 1
@@ -102,14 +112,77 @@ if __name__ == "__main__":
             BMS.read_GPIO_v(READ_ENABLE)
             store_temp(MUX_PIN - 1)
             ADC.read_value()
-            if LOW_WRITE == False:
+            if MODE == "DISCHARGE":
                 write_data()
+                if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
+                    NO_PROBLEM_OUTPUT.set_value(0)
+                    print_error("Courant en limite de fusible - ouverture SDC")
+                for current_ic in range(BMS.TOTAL_IC):
+                    for cell in range(12):
+                        if (
+                            BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
+                            >= OVERVOLTAGE
+                        ):
+                            NO_PROBLEM_OUTPUT.set_value(0)
+                            print_error(
+                                "SURTENSION pour la cellule {} du BMS {} - ouverture SDC".format(
+                                    cell + 1, current_ic + 1
+                                )
+                            )
+                        elif (
+                            BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
+                            <= UNDERVOLTAGE
+                        ):
+                            NO_PROBLEM_OUTPUT.set_value(0)
+                            print_error(
+                                "Cellule {} du BMS {} déchargée - ouverture SDC".format(
+                                    cell + 1, current_ic + 1
+                                )
+                            )
+                    for temp_v in range(MAX_MUX_PIN):
+                        if (
+                            temp(BMS.config.BMS_IC[current_ic].temp[temp_v])
+                            >= DISCHARGE_MAX_T
+                        ):
+                            NO_PROBLEM_OUTPUT.set_value(0)
+                            print_error(
+                                "Température de la cellule {} du BMS {} trop élevée - ouverture SDC".format(
+                                    temp_v + 1, current_ic + 1
+                                )
+                            )
+            elif MODE == "CHARGE":
+                write_data()
+                if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
+                    NO_PROBLEM_OUTPUT.set_value(0)
+                    print_error("Courant en limite de fusible - ouverture SDC")
+                for current_ic in range(BMS.TOTAL_IC):
+                    for cell in range(12):
+                        if (
+                            BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
+                            >= OVERVOLTAGE
+                        ):
+                            NO_PROBLEM_OUTPUT.set_value(0)
+                            print_error(
+                                "SURTENSION pour la cellule {} du BMS {} - ouverture SDC".format(
+                                    cell + 1, current_ic + 1
+                                )
+                            )
+                    for temp_v in range(MAX_MUX_PIN):
+                        if (
+                            temp(BMS.config.BMS_IC[current_ic].temp[temp_v])
+                            >= CHARGE_MAX_T
+                        ):
+                            NO_PROBLEM_OUTPUT.set_value(0)
+                            print_error(
+                                "Température de la cellule {} du BMS {} trop élevée - ouverture SDC".format(
+                                    temp_v + 1, current_ic + 1
+                                )
+                            )
             else:
-                snap_time = time.time()
-                if snap_time() - TIMER > 10:
-                    write_data
-                    TIMER = snap_time
+                if TIME - TIMER > LOW_WRITE_TIME:
+                    write_data()
+                    TIMER = TIME
         except:
             ACTIVE = False
             NO_PROBLEM_OUTPUT.set_value(0)
-            print("Erreur détectée - ouverture SDC")
+            print_error("Erreur dans l'éxécution PYTHON - ouverture SDC")

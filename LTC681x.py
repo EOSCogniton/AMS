@@ -202,13 +202,15 @@ def spi_write_read(tx_data: List[int], rx_len: int) -> None:
 def wakeup_idle(total_ic: int):
     """Wake isoSPI up from IDlE state and enters the READY state"""
     for _ in range(total_ic):
-        spi.writebytes([0xFF])
+        spi.xfer3([0xFF])
 
 
 def wakeup_sleep(total_ic: int, f_hz=MAX_SPEED_HZ):
     """Generic wakeup command to wake the LTC681x from sleep state"""
+    # LTC681x_rdcfg(total_ic)
     for _ in range(total_ic):
-        spi.writebytes([0, 0, 0, 0, 0, 0, 0, 0] * int(300 * 1e-6 * f_hz))
+
+        spi.xfer3([0] * int(300 * 1e-6 * f_hz))
         time.sleep(10e-6)
 
 
@@ -223,7 +225,7 @@ def cmd_68(cmd: List[bool]):
         bin2int(pec[:8]),
         bin2int(pec[8:]),
     ]
-    spi.writebytes(word)
+    spi.xfer3(word)
 
 
 def write_68(
@@ -250,14 +252,13 @@ def write_68(
             # The first configuration written is received by the last IC in the daisy chain
             word[cmd_index] = data[((current_ic - 1) * 6) + current_byte]
             cmd_index += 1
-
         data_pec = pec15_calc(BYTES_IN_REG, data[((current_ic - 1) * 6) :])
         word[cmd_index] = data_pec[0]
         word[cmd_index + 1] = data_pec[1]
 
         cmd_index += 2
 
-    spi.writebytes(word)
+    spi.xfer3(word)
 
 
 def read_68(total_ic: int, cmd: List[bool]):
@@ -269,13 +270,14 @@ def read_68(total_ic: int, cmd: List[bool]):
 
     cmdbit = [0, 0, 0, 0, 0] + cmd[:3] + cmd[3:]
     pec = calcul_PEC(cmdbit)
-    word = [0] * (4 + 8 * total_ic)
+    word = [0] * 4
     word[0] = bin2int(cmdbit[:8])
     word[1] = bin2int(cmdbit[8:])
     word[2] = bin2int(pec[:8])
     word[3] = bin2int(pec[8:])
 
-    data = spi_write_read(word, BYTES_IN_REG * total_ic)
+    data = spi_write_read(word, (BYTES_IN_REG) * total_ic)
+    print(data)
     res = [0] * len(data)
 
     for current_ic in range(total_ic):
@@ -285,7 +287,7 @@ def read_68(total_ic: int, cmd: List[bool]):
             ]
 
     received_pec = (res[(current_ic * 8) + 6], res[(current_ic * 8) + 7])
-    data_pec = pec15_calc(6, data[((current_ic - 1) * 6) :])
+    data_pec = pec15_calc(6, data[((current_ic) * 6) :])
     if received_pec != data_pec:
         pec_error = -1
 
@@ -300,7 +302,7 @@ def LTC681x_wrcfg(total_ic: int):
     :param ic: A list of CellASIC objects that contain the configuration data to be written.
     """
     cmd = CMD["WRCGFA"]
-    write_buffer = [0] * 256
+    write_buffer = [0 for _ in range(6 * (total_ic))]
     write_count = 0
 
     for current_ic in range(total_ic):
@@ -312,7 +314,6 @@ def LTC681x_wrcfg(total_ic: int):
         for data in range(6):
             write_buffer[write_count] = config.BMS_IC[c_ic].config.tx_data[data]
             write_count += 1
-
     write_68(total_ic, cmd, write_buffer)
 
 
@@ -486,8 +487,9 @@ def LTC681x_adcv(MD: int, DCP: int, CH: int):
     cmd[0] = md_bits + 0x02
     md_bits = (MD & 0x01) << 7
     cmd[1] = md_bits + 0x60 + (DCP << 4) + CH
+    cmdbits = int2bin(cmd[0]) + int2bin(cmd[1])
 
-    cmd_68(int2bin(cmd[0]) + int2bin(cmd[1]))
+    cmd_68(cmdbits[5:])
 
 
 def LTC681x_adax(MD: int, CHG: int):
@@ -502,8 +504,9 @@ def LTC681x_adax(MD: int, CHG: int):
     cmd[0] = md_bits + 0x04
     md_bits = (MD & 0x01) << 7
     cmd[1] = md_bits + 0x60 + CHG
+    cmdbits = int2bin(cmd[0]) + int2bin(cmd[1])
 
-    cmd_68(int2bin(cmd[0]) + int2bin(cmd[1]))
+    cmd_68(cmdbits[5:])
 
 
 def LTC681x_adstat(MD: int, CHST: int):
@@ -518,8 +521,9 @@ def LTC681x_adstat(MD: int, CHST: int):
     cmd[0] = md_bits + 0x04
     md_bits = (MD & 0x01) << 7
     cmd[1] = md_bits + 0x68 + CHST
+    cmdbits = int2bin(cmd[0]) + int2bin(cmd[1])
 
-    cmd_68(int2bin(cmd[0]) + int2bin(cmd[1]))
+    cmd_68(cmdbits[5:])
 
 
 def LTC681x_adcvsc(MD: int, DCP: int):
@@ -534,8 +538,9 @@ def LTC681x_adcvsc(MD: int, DCP: int):
     cmd[0] = md_bits | 0x04
     md_bits = (MD & 0x01) << 7
     cmd[1] = md_bits | 0x60 | (DCP << 4) | 0x07
+    cmdbits = int2bin(cmd[0]) + int2bin(cmd[1])
 
-    cmd_68(int2bin(cmd[0]) + int2bin(cmd[1]))
+    cmd_68(cmdbits[5:])
 
 
 def LTC681x_adcvax(MD: int, DCP: int):
@@ -550,8 +555,9 @@ def LTC681x_adcvax(MD: int, DCP: int):
     cmd[0] = md_bits | 0x04
     md_bits = (MD & 0x01) << 7
     cmd[1] = md_bits | ((DCP & 0x01) << 4) + 0x6F
+    cmdbits = int2bin(cmd[0]) + int2bin(cmd[1])
 
-    cmd_68(int2bin(cmd[0]) + int2bin(cmd[1]))
+    cmd_68(cmdbits[5:])
 
 
 def LTC681x_rdcv(reg: int, total_ic: int) -> int:

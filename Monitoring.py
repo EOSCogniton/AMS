@@ -3,27 +3,23 @@ import ADC
 import CAN
 from read_temp import temp
 
-import gpiod
+import gpiozero
 import time
 import datetime
 
 import os.path
 
-NO_PROBLEM_PIN = 29  # GPIO5
+NO_PROBLEM_PIN = 5  # GPIO5
 
-chip = gpiod.Chip("gpiochip4")
-
-NO_PROBLEM_OUTPUT = chip.get_line(NO_PROBLEM_PIN)
-
-NO_PROBLEM_OUTPUT.request(consumer="NO_PROBLEM_OUTPUT", type=gpiod.LINE_REQ_DIR_OUT)
+NO_PROBLEM_OUTPUT = gpiozero.LED(NO_PROBLEM_PIN)
 
 MAX_MUX_PIN = 12  # Nombre de thermistors
 
-READ_ENABLE = False  # Affichage dans la console
+READ_ENABLE = True  # Affichage dans la console
 
 MODE = "DISCHARGE"  # DISCHARGE, CHARGE or STANDBY
 
-OVERVOLTAGE = 4.18  # V
+OVERVOLTAGE = 7  # V
 UNDERVOLTAGE = 2.55  # V
 
 CHARGE_MAX_T = 47.5  # °C
@@ -71,7 +67,7 @@ def update_archive():
 
 
 def print_error(error: str):
-    print(error)
+    # print(error)
     with open("error.txt", "a") as f:
         f.write(
             "Date : "
@@ -97,13 +93,15 @@ if __name__ == "__main__":
     ACTIVE = True
     MUX_PIN = 0
     # generate_data_file()
-    NO_PROBLEM_OUTPUT.set_value(1)
+    NO_PROBLEM_OUTPUT.on()
 
     TIMER = time.time()
 
     while ACTIVE:
         try:
             TIME = time.time()
+            BMS.start_cell_mes(READ_ENABLE)
+            BMS.start_GPIO_mes(READ_ENABLE)
             BMS.read_cell_v(READ_ENABLE)
             if MUX_PIN <= MAX_MUX_PIN:
                 MUX_PIN += 1
@@ -115,7 +113,7 @@ if __name__ == "__main__":
             if MODE == "DISCHARGE":
                 write_data()
                 if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
-                    NO_PROBLEM_OUTPUT.set_value(0)
+                    NO_PROBLEM_OUTPUT.off()
                     print_error("Courant en limite de fusible - ouverture SDC")
                 for current_ic in range(BMS.TOTAL_IC):
                     for cell in range(12):
@@ -123,7 +121,7 @@ if __name__ == "__main__":
                             BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
                             >= OVERVOLTAGE
                         ):
-                            NO_PROBLEM_OUTPUT.set_value(0)
+                            NO_PROBLEM_OUTPUT.off()
                             print_error(
                                 "SURTENSION pour la cellule {} du BMS {} - ouverture SDC".format(
                                     cell + 1, current_ic + 1
@@ -133,7 +131,7 @@ if __name__ == "__main__":
                             BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
                             <= UNDERVOLTAGE
                         ):
-                            NO_PROBLEM_OUTPUT.set_value(0)
+                            NO_PROBLEM_OUTPUT.off()
                             print_error(
                                 "Cellule {} du BMS {} déchargée - ouverture SDC".format(
                                     cell + 1, current_ic + 1
@@ -144,7 +142,7 @@ if __name__ == "__main__":
                             temp(BMS.config.BMS_IC[current_ic].temp[temp_v])
                             >= DISCHARGE_MAX_T
                         ):
-                            NO_PROBLEM_OUTPUT.set_value(0)
+                            NO_PROBLEM_OUTPUT.off()
                             print_error(
                                 "Température de la cellule {} du BMS {} trop élevée - ouverture SDC".format(
                                     temp_v + 1, current_ic + 1
@@ -153,7 +151,7 @@ if __name__ == "__main__":
             elif MODE == "CHARGE":
                 write_data()
                 if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
-                    NO_PROBLEM_OUTPUT.set_value(0)
+                    NO_PROBLEM_OUTPUT.off()
                     print_error("Courant en limite de fusible - ouverture SDC")
                 for current_ic in range(BMS.TOTAL_IC):
                     for cell in range(12):
@@ -161,7 +159,7 @@ if __name__ == "__main__":
                             BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
                             >= OVERVOLTAGE
                         ):
-                            NO_PROBLEM_OUTPUT.set_value(0)
+                            NO_PROBLEM_OUTPUT.off()
                             print_error(
                                 "SURTENSION pour la cellule {} du BMS {} - ouverture SDC".format(
                                     cell + 1, current_ic + 1
@@ -172,7 +170,7 @@ if __name__ == "__main__":
                             temp(BMS.config.BMS_IC[current_ic].temp[temp_v])
                             >= CHARGE_MAX_T
                         ):
-                            NO_PROBLEM_OUTPUT.set_value(0)
+                            NO_PROBLEM_OUTPUT.off()
                             print_error(
                                 "Température de la cellule {} du BMS {} trop élevée - ouverture SDC".format(
                                     temp_v + 1, current_ic + 1
@@ -184,5 +182,5 @@ if __name__ == "__main__":
                     TIMER = TIME
         except:
             ACTIVE = False
-            NO_PROBLEM_OUTPUT.set_value(0)
+            NO_PROBLEM_OUTPUT.off()
             print_error("Erreur dans l'éxécution PYTHON - ouverture SDC")

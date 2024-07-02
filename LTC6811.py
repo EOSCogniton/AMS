@@ -113,12 +113,19 @@ def init():
     # Set the configuration bits.
     # Refer to the Configuration Register Group from data sheet.
     ####################################################
+    global REFON
     REFON = True  # Reference Powered Up Bit
+    global ADC_OPT
     ADCOPT = False  # ADC Mode option bit
+    global GPIOBITS_A
     GPIOBITS_A = [False, False, True, True, True]  # GPIO Pin Control // Gpio 1,2,3,4,5
+    global UV
     UV = UV_THRESHOLD  # Under-voltage Comparison Voltage
+    global OV
     OV = OV_THRESHOLD  # Over-voltage Comparison Voltage
+    global DCCBITS_A
     DCCBITS_A = [False] * 12  # Discharge cell switch // Dcc 1,2,3,4,5,6,7,8,9,10,11,12
+    global DCTOBITS
     DCTOBITS = [
         True,
         False,
@@ -126,14 +133,14 @@ def init():
         False,
     ]  # Discharge time value // Dcto 0,1,2,3 // Programmed for 4 min
     # Ensure that Dcto bits are set according to the required discharge time. Refer to the data sheet
-
-    MAX_SPEED_HZ = 2000000  # Fréquence max et par défaut du bus SPI
+    global MAX_SPEED_HZ
+    MAX_SPEED_HZ = 1000000  # Fréquence max et par défaut du bus SPI
 
     # We only have SPI bus 0 available to us on the Pi
     bus = 0
 
     # Device is the chip select pin. Set to 0 or 1, depending on the connections
-    device = 0
+    device = 1
 
     # Open a connection to a specific bus and device (chip select pin)
     spi.open(bus, device)

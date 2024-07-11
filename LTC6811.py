@@ -115,10 +115,10 @@ def init():
     ####################################################
     global REFON
     REFON = True  # Reference Powered Up Bit
-    global ADC_OPT
+    global ADCOPT
     ADCOPT = False  # ADC Mode option bit
     global GPIOBITS_A
-    GPIOBITS_A = [False, False, True, True, True]  # GPIO Pin Control // Gpio 1,2,3,4,5
+    GPIOBITS_A = [False, False, False, True, True]  # GPIO Pin Control // Gpio 1,2,3,4,5
     global UV
     UV = UV_THRESHOLD  # Under-voltage Comparison Voltage
     global OV
@@ -127,9 +127,9 @@ def init():
     DCCBITS_A = [False] * 12  # Discharge cell switch // Dcc 1,2,3,4,5,6,7,8,9,10,11,12
     global DCTOBITS
     DCTOBITS = [
-        True,
         False,
-        True,
+        False,
+        False,
         False,
     ]  # Discharge time value // Dcto 0,1,2,3 // Programmed for 4 min
     # Ensure that Dcto bits are set according to the required discharge time. Refer to the data sheet
@@ -140,7 +140,7 @@ def init():
     bus = 0
 
     # Device is the chip select pin. Set to 0 or 1, depending on the connections
-    device = 1
+    device = 0
 
     # Open a connection to a specific bus and device (chip select pin)
     spi.open(bus, device)
@@ -292,15 +292,44 @@ def write_byte_i2c_communication(data: List[int], enable_read=True):
         print_rxcomm()  # Print received data into the comm register
 
 
-def select_mux_pin(pin: int):
+def reset_mux(enable_read=True):
+    """Set Mux to no output/input
+    ***HOMEMADE***
+    """
+    START = [0, 1, 1, 0]
+    STOP = [0, 0, 0, 1]
+    BLANK = [0, 0, 0, 0]
+    ACK = [0, 0, 0, 0]
+    NACK = [1, 0, 0, 0]
+    NACKSTOP = [1, 0, 0, 1]
+    ADG728 = [1, 0, 0, 1, 1]  # Adress of Mux ADG728 (see datasheet)
+    PINBIN = [0] * 8
+    RW = [0]
+
+    ADR = [[0, 0], [0, 1]]
+    for adrbits in ADR:
+        data = []
+        data.append(bin2int(START + ADG728[:4]))
+        data.append(bin2int(ADG728[4:] + adrbits + RW + ACK))
+        data.append(bin2int(BLANK + PINBIN[:4]))
+        data.append(bin2int(PINBIN[4:] + ACK))
+        data.append(bin2int(STOP + BLANK))
+        data.append(bin2int(BLANK + ACK))
+        write_byte_i2c_communication(data, enable_read)
+
+
+def select_mux_pin(pin: int, enable_read=True):
     """Select the pin that will be readed among all the 18 pin of the two mux connected to the BMS
     Args
     pin : The number of the pin that will be readed
     ***HOMEMADE***
     """
+    reset_mux()
     data = []
     START = [0, 1, 1, 0]
+    STOP = [0, 0, 0, 1]
     BLANK = [0, 0, 0, 0]
+    ACK = [0, 0, 0, 0]
     NACK = [1, 0, 0, 0]
     NACKSTOP = [1, 0, 0, 1]
     ADG728 = [1, 0, 0, 1, 1]  # Adress of Mux ADG728 (see datasheet)
@@ -315,12 +344,26 @@ def select_mux_pin(pin: int):
     else:
         print("N° de pin invalide")
         return
-    data.append(bin2int(START + ADG728[4:]))
-    data.append(bin2int(ADG728[4:] + ADR + RW + NACK))
+    data.append(bin2int(START + ADG728[:4]))
+    data.append(bin2int(ADG728[4:] + ADR + RW + ACK))
     data.append(bin2int(BLANK + PINBIN[:4]))
-    data.append(bin2int(PINBIN[4:] + NACKSTOP))
+    data.append(bin2int(PINBIN[4:] + ACK))
+    data.append(bin2int(STOP + BLANK))
+    data.append(bin2int(BLANK + ACK))
 
-    write_byte_i2c_communication(data)
+    write_byte_i2c_communication(data, enable_read)
+
+
+def set_GPIO_PIN(enable_read=True):
+    wakeup_sleep(TOTAL_IC)
+    for current_ic in range(TOTAL_IC):
+        LTC681x_set_cfgr(
+            current_ic, REFON, ADCOPT, GPIOBITS_A, DCCBITS_A, DCTOBITS, UV, OV
+        )
+    wakeup_idle(TOTAL_IC)
+    LTC681x_wrcfg(TOTAL_IC)
+    if enable_read:
+        print_wrconfig()
 
 
 ### Fonctions d'affichage :

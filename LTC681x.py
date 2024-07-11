@@ -79,7 +79,7 @@ MAX_SPEED_HZ = int(1e6)
 CMD = {
     "STCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],
     "RDCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0],
-    "WRCOMM": [1, 1, 0, 0, 1, 0, 0, 0, 0, 1],
+    "WRCOMM": [1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1],
     "WRCGFA": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
     "WRCFGB": [0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0],
     "RDCFGA": [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
@@ -210,8 +210,8 @@ def wakeup_sleep(total_ic: int, f_hz=MAX_SPEED_HZ):
     # LTC681x_rdcfg(total_ic)
     for _ in range(total_ic):
 
-        spi.xfer3([0] * int(300 * 1e-6 * f_hz))
-        time.sleep(10e-6)
+        spi.xfer3([255] * int(300 * 1e-6 * f_hz))
+        time.sleep(10 * 1e-6)
 
 
 def cmd_68(cmd: List[bool]):
@@ -277,7 +277,6 @@ def read_68(total_ic: int, cmd: List[bool]):
     word[3] = bin2int(pec[8:])
 
     data = spi_write_read(word, (BYTES_IN_REG) * total_ic)
-    print(data)
     res = [0] * len(data)
 
     for current_ic in range(total_ic):
@@ -350,7 +349,6 @@ def LTC681x_rdcfg(total_ic: int) -> int:
     :return: PEC error status.
     """
     cmd = CMD["RDCFGA"]
-    read_buffer = [0] * 256
     pec_error = 0
 
     read_buffer, pec_error = read_68(total_ic, cmd)
@@ -1199,4 +1197,4 @@ def LTC681x_stcomm(tx_len: int):
         bin2int(pec[:8]),
         bin2int(pec[8:]),
     ]
-    spi_write_read(word, tx_len * 3)
+    spi.xfer3(word + [0] * tx_len * 3)

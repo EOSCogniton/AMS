@@ -5,7 +5,10 @@ import spidev
 LTC6811.init()
 while True:
     LTC6811.write_read_cfg()
-    print(LTC6811.spi_write_read([0, 50, 100, 150], 6))
+    # LTC6811.test_i2c()
+    # print(LTC6811.spi_write_read([0, 2, 43, 10], 8))
+    # LTC6811.select_mux_pin(1)
+    # LTC6811.LTC681x_stcomm(4)
     time.sleep(0.1)
 
 # spi = spidev.SpiDev()
@@ -30,7 +33,7 @@ while True:
 # LTC6811.init()
 # while True:
 #     # LTC6811.write_read_cfg()
-#     print(LTC6811.spi.xfer3([19] * 100))
+#     print(LTC6811.spi.xfer3([19, 3, 37, 127, 255, 200] * 10))
 #     # time.sleep(0.001)
 #     # print(LTC6811.spi.readbytes(1000))
 #     # led.on()

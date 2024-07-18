@@ -8,6 +8,7 @@ import time
 import datetime
 
 import os.path
+import py7zr
 
 NO_PROBLEM_PIN = 5  # GPIO5
 
@@ -40,7 +41,7 @@ def write_data():
             data_raw += BMS.config.BMS_IC[k].cells.c_codes[i].to_bytes(2)
         for j in range(MAX_MUX_PIN):
             data_raw += BMS.config.BMS_IC[k].temp[j].to_bytes(2)
-    with open("data.bin", "ab") as file:
+    with open("data/data.bin", "ab") as file:
         # data=bytearray(data_row)
         file.write(data_raw)
 
@@ -53,22 +54,26 @@ def store_temp(sensor: int):
 
 
 def update_archive():
-    with open("data.bin", "rb") as f:
+    with open("data/data.bin", "rb") as f:
         datebin = f.read(8)
         date = datetime.datetime.fromtimestamp(int.from_bytes(datebin) / 1e8).date()
         written = False
         k = 1
         while not written:
-            if os.path.isfile("archive/" + str(date) + "-" + str(k) + ".bin"):
+            if os.path.isfile("data/" + str(date) + "-" + str(k) + ".7z"):
                 k += 1
             else:
-                os.rename("data.bin", "archive/" + str(date) + "-" + str(k) + ".bin")
+                with py7zr.SevenZipFile(
+                    "data/" + str(date) + "-" + str(k) + ".7z", "w"
+                ) as archive:
+                    archive.writeall("data/data.bin", "data.bin")
+                os.remove("data/data.bin")
                 written = True
 
 
 def print_error(error: str):
     # print(error)
-    with open("error.txt", "a") as f:
+    with open("data/error.txt", "a") as f:
         f.write(
             "Date : "
             + str(datetime.datetime.fromtimestamp(TIME))
@@ -79,7 +84,7 @@ def print_error(error: str):
 
 
 if __name__ == "__main__":
-    if os.path.isfile("data.bin"):
+    if os.path.isfile("data/data.bin"):
         update_archive()
 
     BMS.init()

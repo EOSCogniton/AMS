@@ -41,9 +41,12 @@ def write_data():
             data_raw += BMS.config.BMS_IC[k].cells.c_codes[i].to_bytes(2)
         for j in range(MAX_MUX_PIN):
             data_raw += BMS.config.BMS_IC[k].temp[j].to_bytes(2)
-    with open("data/data.bin", "ab") as file:
+    data_raw += BMS.bin2int(NO_PROBLEM).to_bytes(5)
+    with open("data/data.bin", "ab") as fileab:
         # data=bytearray(data_row)
-        file.write(data_raw)
+        fileab.write(data_raw)
+    with open("data/actualdata.bin", "wb") as filewb:
+        filewb.write(data_raw)
 
 
 def store_temp(sensor: int):
@@ -71,18 +74,6 @@ def update_archive():
                 written = True
 
 
-def print_error(error: str):
-    # print(error)
-    with open("data/error.txt", "a") as f:
-        f.write(
-            "Date : "
-            + str(datetime.datetime.fromtimestamp(TIME))
-            + " - "
-            + error
-            + "\n"
-        )
-
-
 if __name__ == "__main__":
     if os.path.isfile("data/data.bin"):
         update_archive()
@@ -98,6 +89,8 @@ if __name__ == "__main__":
     ACTIVE = True
     MUX_PIN = 0
     # generate_data_file()
+    NO_PROBLEM = [0] * (32 * BMS.TOTAL_IC)
+    # Création d'un code d'erreur en cas d'interruption
     NO_PROBLEM_OUTPUT.on()
 
     TIMER = time.time()
@@ -118,74 +111,54 @@ if __name__ == "__main__":
             if MODE == "DISCHARGE":
                 write_data()
                 if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
+                    NO_PROBLEM[1] = 1
                     NO_PROBLEM_OUTPUT.off()
-                    print_error("Courant en limite de fusible - ouverture SDC")
                 for current_ic in range(BMS.TOTAL_IC):
                     for cell in range(12):
                         if (
                             BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
                             >= OVERVOLTAGE
                         ):
+                            NO_PROBLEM[current_ic * 32 + cell + 2] = 1
                             NO_PROBLEM_OUTPUT.off()
-                            print_error(
-                                "SURTENSION pour la cellule {} du BMS {} - ouverture SDC".format(
-                                    cell + 1, current_ic + 1
-                                )
-                            )
                         elif (
                             BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
                             <= UNDERVOLTAGE
                         ):
+                            NO_PROBLEM[current_ic * 32 + cell + 2] = 1
                             NO_PROBLEM_OUTPUT.off()
-                            print_error(
-                                "Cellule {} du BMS {} déchargée - ouverture SDC".format(
-                                    cell + 1, current_ic + 1
-                                )
-                            )
                     for temp_v in range(MAX_MUX_PIN):
                         if (
                             temp(BMS.config.BMS_IC[current_ic].temp[temp_v])
                             >= DISCHARGE_MAX_T
                         ):
+                            NO_PROBLEM[current_ic * 32 + 16 + 2 + temp_v] = 1
                             NO_PROBLEM_OUTPUT.off()
-                            print_error(
-                                "Température de la cellule {} du BMS {} trop élevée - ouverture SDC".format(
-                                    temp_v + 1, current_ic + 1
-                                )
-                            )
             elif MODE == "CHARGE":
                 write_data()
                 if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
+                    NO_PROBLEM[1] = 1
                     NO_PROBLEM_OUTPUT.off()
-                    print_error("Courant en limite de fusible - ouverture SDC")
                 for current_ic in range(BMS.TOTAL_IC):
                     for cell in range(12):
                         if (
                             BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
                             >= OVERVOLTAGE
                         ):
+                            NO_PROBLEM[current_ic * 32 + cell + 2] = 1
                             NO_PROBLEM_OUTPUT.off()
-                            print_error(
-                                "SURTENSION pour la cellule {} du BMS {} - ouverture SDC".format(
-                                    cell + 1, current_ic + 1
-                                )
-                            )
                     for temp_v in range(MAX_MUX_PIN):
                         if (
                             temp(BMS.config.BMS_IC[current_ic].temp[temp_v])
                             >= CHARGE_MAX_T
                         ):
+                            NO_PROBLEM[current_ic * 32 + 16 + temp_v + 2] = 1
                             NO_PROBLEM_OUTPUT.off()
-                            print_error(
-                                "Température de la cellule {} du BMS {} trop élevée - ouverture SDC".format(
-                                    temp_v + 1, current_ic + 1
-                                )
-                            )
             else:
                 if TIME - TIMER > LOW_WRITE_TIME:
                     write_data()
                     TIMER = TIME
         except:
             ACTIVE = False
+            NO_PROBLEM[0] = 1
             NO_PROBLEM_OUTPUT.off()
-            print_error("Erreur dans l'éxécution PYTHON - ouverture SDC")

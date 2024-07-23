@@ -5,7 +5,7 @@ from ADC import convert_current
 
 import datetime
 
-filepath = "data.bin"
+filepath = "data/data.bin"
 
 file = open(filepath, "rb")
 

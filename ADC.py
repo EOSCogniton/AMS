@@ -37,7 +37,7 @@ bus = smbus2.SMBus(I2C_CHANNEL)
 
 
 def set_channel(entry: int):
-    address = bin2int(ADR + [0])  # R/W bit to 0 to Write
+    address = bin2int(ADR)  # R/W bit to 0 to Write
     reg = bin2int(CONFIG_REG)
     if not (0 <= entry <= 3):
         print("N° d'entrée invalide")
@@ -53,28 +53,40 @@ def set_channel(entry: int):
     # 5 bit : Polarité de comparateur
     # 6 bit : Mode de trigger du comparateur
     # 7-8 bit : nombre de trigger nécessaire pour activer le alert/ready (non utilisé)
-    word = bin2int(bit1 + bit2)
-    # bus.write_word_data(address, reg, word)
+    msg = smbus2.i2c_msg.write(address, [reg, bin2int(bit1), bin2int(bit2)])
+    bus.i2c_rdwr(msg)
 
 
 def enable_read():
-    address = bin2int(ADR + [0])  # R/W bit high to read
-    reg = DATA_REG
-    # bus.write_byte(address, reg)
+    address = bin2int(ADR)  # R/W bit high to read
+    reg = bin2int(DATA_REG)
+    msg = smbus2.i2c_msg.write(address, [reg])
+    bus.i2c_rdwr(msg)
 
 
 def read_value():
     global VALUE
-    addr = bin2int(ADR + [1])
+    enable_read()
+    addr = bin2int(ADR)
     msg = smbus2.i2c_msg.read(addr, 2)
-    msg = [1, 2]
-    msgbin = [int2bin(msg[0]), int2bin(msg[1])]
-    # bus.i2c_rdwr(msg)
-    VALUE = bin2int(msgbin[0][1:] + msgbin[1])
+    # msg = [1, 2]
+    # msgbin = [int2bin(msg[0]), int2bin(msg[1])]
+    bus.i2c_rdwr(msg)
+    resmsg = []
+    for value in msg:
+        resmsg += int2bin(value)
+    if resmsg[0] == 0:
+        VALUE = bin2int(resmsg)
+    else:
+        comp2 = [0] * 16
+        for k in range(16):
+            if resmsg[k] == 0:
+                comp2[k] = 1
+        VALUE = -bin2int(comp2)
 
 
 def convert_current(value: int):
-    return value * FSR / (2**15) / RESISTOR
+    return value * FSR * 1000 / (2**15) / RESISTOR
 
 
 def init():

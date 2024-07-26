@@ -140,13 +140,14 @@ def send_data_CAN():  # Envoi des données via CAN
                 BMS.bin2int(tensionbin[8:]),
                 BMS.bin2int(tempmaxbin[:8]),
                 BMS.bin2int(tempmaxbin[8:]),
-                n,
+                n,  # for test purpose only
             ],
         )
         try:
             bus.send(msg)
-        except:
-            print("Message non envoyé")
+        except Exception as err:
+            print("Message CAN non envoyé :")
+            print(f"{type(err).__name__} was raised: {err}")
 
 
 if __name__ == "__main__":

@@ -121,13 +121,14 @@ def bin2int(binval: List[bool]):
     return int(st, 2)
 
 
-def int2bin(intval: int):
-    binst = bin(intval)
-    nb0 = 8 - len(binst) + 2
+def int2bin(nb: int):
+    if nb < 0:
+        nb = -nb
+    binst = bin(nb)
+    nb0 = 8 * ((len(binst[2:]) - 1) // 8 + 1) - len(binst) + 2
     res = [0] * nb0
-    binst = binst[2:]
-    for k in range(len(binst)):
-        res.append(int(binst[k]))
+    for x in binst[2:]:
+        res.append(int(x))
     return res
 
 

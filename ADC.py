@@ -1,24 +1,9 @@
-### Code ce controle de l'ADC
+### Code de controle de l'ADC
 # https://www.ti.com/lit/ds/symlink/ads1115-q1.pdf?ts=1718378770402
 
 import smbus2
 from typing import List
-
-
-def bin2int(binval: List[bool]):
-    st = ""
-    for x in binval:
-        st += str(x)
-    return int(st, 2)
-
-
-def int2bin(nb: int):
-    binst = bin(nb)
-    nb0 = 8 - len(binst) + 2
-    res = [0] * nb0
-    for x in binst[2:]:
-        res.append(int(x))
-    return res
+from LTC681x import bin2int, int2bin
 
 
 # I2C channel 0 is connected to the GPIO pins
@@ -69,17 +54,15 @@ def read_value():
     enable_read()
     addr = bin2int(ADR)
     msg = smbus2.i2c_msg.read(addr, 2)
-    # msg = [1, 2]
-    # msgbin = [int2bin(msg[0]), int2bin(msg[1])]
     bus.i2c_rdwr(msg)
     resmsg = []
     for value in msg:
         resmsg += int2bin(value)
     if resmsg[0] == 0:
         VALUE = bin2int(resmsg)
-    else:
+    else:  # complément à 2
         comp2 = [0] * 16
-        for k in range(16):
+        for k in range(1, 16):
             if resmsg[k] == 0:
                 comp2[k] = 1
         VALUE = -bin2int(comp2)

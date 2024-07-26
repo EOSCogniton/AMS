@@ -10,6 +10,7 @@ import datetime
 import os.path
 import py7zr
 
+PATH = "/usr/share/AMS/"
 NO_PROBLEM_PIN = 5  # GPIO5
 
 NO_PROBLEM_OUTPUT = gpiozero.LED(NO_PROBLEM_PIN)
@@ -17,7 +18,7 @@ NO_PROBLEM_OUTPUT = gpiozero.LED(NO_PROBLEM_PIN)
 
 MAX_MUX_PIN = 12  # Nombre de thermistors
 
-READ_ENABLE = True  # Affichage dans la console
+READ_ENABLE = False  # Affichage dans la console
 
 MODE = "DISCHARGE"  # DISCHARGE, CHARGE or STANDBY
 
@@ -33,6 +34,8 @@ LOW_WRITE_TIME = 10  # Temps d'écriture entre chaque donnée (en s) pour le LOW
 
 CANID = 0x17
 
+n = 0
+
 ### Functions
 
 
@@ -44,10 +47,10 @@ def write_data():  # Fonction qui convertie les données en données binaires et
         for j in range(MAX_MUX_PIN):
             data_raw += BMS.config.BMS_IC[k].temp[j].to_bytes(2)
     data_raw += BMS.bin2int(NO_PROBLEM).to_bytes(5)
-    with open("data/data.bin", "ab") as fileab:
+    with open(PATH + "data/data.bin", "ab") as fileab:
         # data=bytearray(data_row)
         fileab.write(data_raw)
-    with open("data/actualdata.bin", "wb") as filewb:
+    with open(PATH + "data/actualdata.bin", "wb") as filewb:
         filewb.write(data_raw)
 
 
@@ -59,7 +62,7 @@ def store_temp(sensor: int):  # Stockage des valeurs de températures
 
 
 def update_archive():  # Création d'archive comprimée à la date du jour
-    with open("data/data.bin", "rb") as f:
+    with open(PATH + "data/data.bin", "rb") as f:
         datebin = f.read(8)
         date = datetime.datetime.fromtimestamp(int.from_bytes(datebin) / 1e8).date()
         written = False
@@ -69,10 +72,10 @@ def update_archive():  # Création d'archive comprimée à la date du jour
                 k += 1
             else:
                 with py7zr.SevenZipFile(
-                    "data/" + str(date) + "-" + str(k) + ".7z", "w"
+                    PATH + "data/" + str(date) + "-" + str(k) + ".7z", "w"
                 ) as archive:
-                    archive.writeall("data/data.bin", "data.bin")
-                os.remove("data/data.bin")
+                    archive.writeall(PATH + "data/data.bin", "data.bin")
+                os.remove(PATH + "data/data.bin")
                 written = True
 
 
@@ -115,6 +118,7 @@ def calc_voltage():  # Calcul sur les données de tension
 
 
 def send_data_CAN():  # Envoi des données via CAN
+    global n
     tempe = calc_temp()
     volt = calc_voltage()
     tension = volt[0]
@@ -125,6 +129,9 @@ def send_data_CAN():  # Envoi des données via CAN
         tensionbin = [0] * 8 + tensionbin
     if len(tempmaxbin) <= 8:
         tempmaxbin = [0] * 8 + tempmaxbin
+    n += 1
+    if n > 200:
+        n = 0
     with can.Bus(channel="can0", interface="socketcan") as bus:
         msg = can.Message(
             arbitration_id=CANID,
@@ -133,17 +140,17 @@ def send_data_CAN():  # Envoi des données via CAN
                 BMS.bin2int(tensionbin[8:]),
                 BMS.bin2int(tempmaxbin[:8]),
                 BMS.bin2int(tempmaxbin[8:]),
-                5,
-                10,
-                15,
-                20,
+                n,
             ],
         )
-        bus.send(msg)
+        try:
+            bus.send(msg)
+        except:
+            print("Message non envoyé")
 
 
 if __name__ == "__main__":
-    if os.path.isfile("data/data.bin"):
+    if os.path.isfile(PATH + "data/data.bin"):
         update_archive()
 
     BMS.init()  # On initialise les variables du BMS

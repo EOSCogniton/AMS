@@ -3,7 +3,7 @@ import csv
 from scipy.interpolate import CubicSpline
 
 # open the file in read mode
-filename = open("data/RT_table.csv", "r")
+filename = open("/usr/share/AMS/data/RT_table.csv", "r")
 
 # creating dictreader object
 file = csv.DictReader(filename, delimiter=";")

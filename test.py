@@ -25,12 +25,12 @@ while True:
 
 # led = gpiozero.LED(5)
 
-# LTC6811.init()
+# ADMBS1811.init()
 # while True:
-#     # LTC6811.write_read_cfg()
-#     print(LTC6811.spi.xfer3([19, 3, 37, 127, 255, 200] * 10))
+#     # ADMBS1811.write_read_cfg()
+#     print(ADMBS1811.spi.xfer3([19, 3, 37, 127, 255, 200] * 10))
 #     # time.sleep(0.001)
-#     # print(LTC6811.spi.readbytes(1000))
+#     # print(ADMBS1811.spi.readbytes(1000))
 #     # led.on()
 #     time.sleep(0.1)
 #     # led.off()

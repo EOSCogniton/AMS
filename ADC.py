@@ -3,7 +3,7 @@
 
 import smbus2
 from typing import List
-from LTC681x import bin2int, int2bin
+from ADBMS181x import bin2int, int2bin
 
 
 # I2C channel 0 is connected to the GPIO pins

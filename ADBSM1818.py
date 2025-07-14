@@ -34,7 +34,7 @@ DATALOG_DISABLED = 0
 
 # ADC Command Configurations. See ADMBS181x.h for options.
 ADC_OPT = ADC_OPT_DISABLED  # ADC Mode option bit
-ADC_CONVERSION_MODE = MD_7KHZ_3KHZ  # ADC Mode
+ADC_CONVERSION_MODE = MD_27KHZ_14KHZ  # ADC Mode
 ADC_DCP = DCP_ENABLED  # Discharge Permitted
 CELL_CH_TO_CONVERT = CELL_CH_ALL  # Channel Selection for ADC conversion
 AUX_CH_TO_CONVERT = AUX_CH_ALL  # Channel Selection for ADC conversion
@@ -43,7 +43,7 @@ SEL_ALL_REG = REG_ALL  # Register Selection
 SEL_REG_A = REG_1  # Register Selection
 SEL_REG_B = REG_2  # Register Selection
 
-MEASUREMENT_LOOP_TIME = 500  # Loop Time in milliseconds (ms)
+MEASUREMENT_LOOP_TIME = 200  # Loop Time in milliseconds (ms)
 
 # Under Voltage and Over Voltage Thresholds
 OV_THRESHOLD = 41000  # Over voltage threshold ADC Code. LSB = 0.0001 ---(4.1V)
@@ -145,7 +145,7 @@ def init():
     PSBITS = [False, False]; # Digital Redundancy Path Selection//ps-0,1
     # Ensure that Dcto bits are set according to the required discharge time. Refer to the data sheet
     global MAX_SPEED_HZ
-    MAX_SPEED_HZ = 1000000  # Fréquence max et par défaut du bus SPI
+    MAX_SPEED_HZ = 1850000  # Fréquence max et par défaut du bus SPI
 
     # We only have SPI bus 0 available to us on the Pi
     bus = 0
@@ -319,7 +319,161 @@ def reset_pec_counter(enable_read=True):
     if enable_read:
         print_pec_error_count()
 
+def run_openwire_single(MAX_CELL):
+    OPENWIRE_THRESHOLD = 0.4
+    N_CHANNELS = MAX_CELL
 
+    
+    pullUp = [[0 for _ in range(N_CHANNELS)] for _ in range(TOTAL_IC)]
+    pullDwn = [[0 for _ in range(N_CHANNELS)] for _ in range(TOTAL_IC)]
+    openWire_delta = [[0 for _ in range(N_CHANNELS)] for _ in range(TOTAL_IC)]
+    openWire_flags = [[0 for _ in range(N_CHANNELS)] for _ in range(TOTAL_IC)]
+
+    wakeup_sleep(TOTAL_IC)
+    ADBMS181X_clrcell()
+
+    # Pull Up Measurement (x2)
+    cmd = [0,1]
+    cmd += (int2bin(ADC_CONVERSION_MODE))[-2:]
+    cmd += [1,1]
+    cmd.append(0)  # DCP disabled
+    cmd.append(1)
+    cmd += (int2bin(CELL_CH_ALL))[-3:]
+    for _ in range(2):
+        wakeup_idle(TOTAL_IC)
+        cmd_68(cmd)
+        ADMBS181x_pollAdc()
+
+    time1 = time.time()
+
+    wakeup_idle(TOTAL_IC)
+    error = ADMBS181x_rdcv(0, TOTAL_IC)
+    check_error(error)
+
+    for cic in range(TOTAL_IC):
+        for cell in range(N_CHANNELS):
+            pullUp[cic][cell] = config.BMS_IC[cic].cells.c_codes[cell] * 0.0001
+
+    #print(time.time()-time1)
+
+    # Pull Down Measurement (x2)
+    for _ in range(2):
+        wakeup_idle(TOTAL_IC)
+        cmd = [0,1]
+        cmd += (int2bin(ADC_CONVERSION_MODE))[-2:]
+        cmd += [0,1]
+        cmd.append(0)  # DCP disabled
+        cmd.append(1)
+        cmd += (int2bin(CELL_CH_ALL))[-3:]
+        cmd_68(cmd)
+        ADMBS181x_pollAdc()
+
+    wakeup_idle(TOTAL_IC)
+    error = ADMBS181x_rdcv(0, TOTAL_IC)
+    check_error(error)
+
+    for cic in range(TOTAL_IC):
+        for cell in range(N_CHANNELS):
+            pullDwn[cic][cell] = config.BMS_IC[cic].cells.c_codes[cell]* 0.0001
+
+    for cic in range(TOTAL_IC):
+
+        for cell in range(N_CHANNELS):
+            if pullDwn[cic][cell] < pullUp[cic][cell]:
+                openWire_delta[cic][cell] = pullUp[cic][cell] - pullDwn[cic][cell]
+            else:
+                openWire_delta[cic][cell] = 0
+
+            if openWire_delta[cic][cell] > OPENWIRE_THRESHOLD and cell>=1:
+                openWire_flags[cic][cell-1] = 1
+
+        if pullUp[cic][0] == 0:
+            openWire_flags[cic][0] = 1
+
+        if pullDwn[cic][N_CHANNELS - 1] == 0:
+            openWire_flags[cic][N_CHANNELS-1] = 1
+
+    return openWire_flags,openWire_delta
+
+
+def open_wire_check(max_cell):
+    time1 = time.time()
+    # Réveil des composants si en veille
+    wakeup_idle(TOTAL_IC)
+
+    # 1. Envoi de la commande ADOWUP (x2)
+    #print("Envoi de ADOWUP 1/2")
+    cmd = [0,1]
+    cmd += (int2bin(ADC_CONVERSION_MODE))[-2:]
+    cmd += [1,1]
+    cmd.append(ADC_DCP)
+    cmd.append(1)
+    cmd += (int2bin(CELL_CH_ALL))[-3:]
+    cmd_68(cmd)
+
+    time2 = time.time()
+    
+
+    time3 = time.time()
+
+    #print(time2-time1)
+    #print(time3-time1)
+    #print("Envoi de ADOWUP 2/2")
+    cmd_68(cmd)
+    ADMBS181x_pollAdc()
+
+    time4 = time.time()
+    start_cell_mes(False)
+    read_cell_v(False)
+    #print(time.time()-time4)
+    # Lecture des tensions cellules après les deux ADOWUP
+    adowup_voltages = [[]*TOTAL_IC]
+    for current_ic in range(TOTAL_IC):
+        for cell in range(max_cell):
+            adowup_voltages[current_ic].append(config.BMS_IC[current_ic].cells.c_codes[cell]*0.0001)
+    # 2. Envoi de la commande ADOWDOWN
+    #print("Envoi de ADOWDOWN")
+    cmd = [0,1]
+    cmd += (int2bin(ADC_CONVERSION_MODE))[-2:]
+    cmd += [0,1]
+    cmd.append(ADC_DCP)
+    cmd.append(1)
+    cmd += (int2bin(CELL_CH_ALL))[-3:]
+    cmd_68(cmd)
+    cmd_68(cmd)
+    ADMBS181x_pollAdc()
+    start_cell_mes(False)
+    read_cell_v(False)
+    # Lecture des tensions cellules après ADOWDOWN
+    adowdown_voltages = [[]*TOTAL_IC]
+    for current_ic in range(TOTAL_IC):
+        for cell in range(max_cell):
+            adowdown_voltages[current_ic].append(config.BMS_IC[current_ic].cells.c_codes[cell]*0.0001)
+
+    open = False
+    # 3. Comparaison des mesures pour détecter un fil ouvert
+    #print("\nComparaison des mesures ADOWUP vs ADOWDOWN :")
+    for ic_index in range(TOTAL_IC):
+        for cell_index in range(max_cell):
+            #print(adowup_voltages[ic_index][cell_index])
+            #print(adowdown_voltages[ic_index][cell_index])
+            if cell_index==18 or cell_index==max_cell-1:
+                if adowdown_voltages[ic_index][cell_index]==0:
+                    #print("IC " + str(ic_index) + " Cellule "+str(cell_index)+" suspectée déconnectée")
+                    open = True
+                #else:
+                    #print("IC " + str(ic_index) + " Cellule "+str(cell_index)+" OK")
+            else:
+                diff = adowup_voltages[ic_index][cell_index+1] - adowdown_voltages[ic_index][cell_index+1]
+                if diff < -0.400:  # <-400mv, see datasheet p.38
+                    #print(f"IC {ic_index} Cellule {cell_index} suspectée déconnectée (ΔV = {diff})")
+                    open = True
+                #else:
+                    #print(f"
+                    # {ic_index} Cellule {cell_index} OK (ΔV = {diff})")
+    return open
+
+# Remove extra calls to start_cell_mes(), read_cell_v(), and unnecessary prints.
 def write_byte_i2c_communication(data: List[int], enable_read=True):
     """
     Writes a byte via I2C communication on the GPIO Ports (using I2C eeprom 24LC025).

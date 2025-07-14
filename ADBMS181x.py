@@ -109,6 +109,8 @@ CMD = {
     "CLRSTAT": [1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1],
     "PLADC": [1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0],
     "DIAGN": [1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1],
+    "ADOWUP": [0,1,0,1,1,1,0,1,0,0,0],
+    "ADOWDOWN": [0,1,0,1,0,1,0,1,0,0,0],
 }
 
 ###Utilitaires divers
@@ -212,7 +214,7 @@ def wakeup_sleep(total_ic: int, f_hz=MAX_SPEED_HZ):
     for _ in range(total_ic):
 
         spi.xfer3([255] * int(300 * 1e-6 * f_hz))
-        time.sleep(10 * 1e-6)
+        #time.sleep(10 * 1e-6)
 
 
 def cmd_68(cmd: List[bool]):
@@ -487,7 +489,7 @@ def ADMBS181x_adcv(MD: int, DCP: int, CH: int):
     md_bits = (MD & 0x01) << 7
     cmd[1] = md_bits + 0x60 + (DCP << 4) + CH
     cmdbits = int2bin(cmd[0]) + int2bin(cmd[1])
-
+    print(cmdbits[5:])
     cmd_68(cmdbits[5:])
 
 
@@ -1202,6 +1204,7 @@ def ADMBS181x_reset_crc_count(total_ic: int):
             config.BMS_IC[current_ic].crc_count.stat_pec[i] = 0
 
 
+
 def ADMBS181x_pollAdc() -> int:
     """
     This function will block operation until the ADC has finished its conversion.
@@ -1330,3 +1333,6 @@ def ADBMS181x_reset_all() -> None:
     cmd_68(CMD["CLRCELL"])
     cmd_68(CMD["CLRAUX"])
     cmd_68(CMD["CLRSTAT"])
+
+def ADBMS181X_clrcell() -> None:
+    cmd_68(CMD["CLRCELL"])

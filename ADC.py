@@ -15,7 +15,7 @@ DATA_REG = [0, 0, 0, 0, 0, 0, 0, 0]
 CHANNEL = {0: [1, 0, 0], 1: [1, 0, 1], 2: [1, 1, 0], 3: [1, 1, 1]}
 FSR = 6.144  # V Full Scale rate (valeur maximale de tension)
 RESISTOR = 47  # Ohm (Valeur de résistance en entrée de channel)
-ENTRY = 3
+ENTRY = 3#2
 
 # Initialize I2C (SMBus)
 bus = smbus2.SMBus(I2C_CHANNEL)
@@ -61,11 +61,15 @@ def read_value():
     if resmsg[0] == 0:
         VALUE = bin2int(resmsg)
     else:  # complément à 2
+        print("On est dans le else")
+        
         comp2 = [0] * 16
         for k in range(1, 16):
             if resmsg[k] == 0:
                 comp2[k] = 1
+        print(bin2int(comp2))
         VALUE = -bin2int(comp2)
+
 
 
 def convert_current(value: int):

@@ -27,15 +27,18 @@ MODE = "DISCHARGE"  # DISCHARGE, CHARGE or STANDBY
 
 OVERVOLTAGE = 7  # V
 UNDERVOLTAGE = 1  # V
+NOMINAL_VOLTAGE = 230 # V
 
 CHARGE_MAX_T = 47.5  # °C
 DISCHARGE_MAX_T = 16 #57.5  # °C
 
 MAX_DISCHARGE_CURRENT = 95  # A
+MAX_CHARGE_CURRENT = 25 # A
 
 LOW_WRITE_TIME = 10  # Temps d'écriture entre chaque donnée (en s) pour le LOW WRITE
 
 CANID = 0x17
+CHARGER_CANID = 0x1806E5F4
 
 n = 0
 
@@ -122,8 +125,34 @@ def calc_voltage():  # Calcul sur les données de tension
     return (sum, sum / (BMS.TOTAL_IC * MAX_CELL), max, indicmax, min, indicmin)
 
 
+def send_charging_CAN():
+    voltage_charge = NOMINAL_VOLTAGE
+    current_charge = MAX_CHARGE_CURRENT
+    voltage_charge_bin = (int(voltage_charge*10)) #O.1V/bit
+    current_charge_bin = (int(current_charge*10)) #0.1A/bit
+    BYTE1 = (voltage_charge_bin >> 8) & 0xFF # Voltage High byte
+    BYTE2 = voltage_charge_bin & 0xFF # Voltage Low byte
+    BYTE3 = (current_charge_bin >> 8) & 0xFF # Current high byte
+    BYTE4 = current_charge_bin & 0xFF
+    BYTE5 = 0 # Start charging
+    with can.Bus(channel="can1", interface="socketcan") as bus:
+        msg = can.Message(
+            arbitration_id=CHARGER_CANID,
+            data=[
+                BYTE1,
+                BYTE2,
+                BYTE3,
+                BYTE4,
+                BYTE5
+            ],
+        )
+        try:
+            bus.send(msg)
+        except Exception as err:
+            print("Message CAN non envoyé :")
+            print(f"{type(err).__name__} was raised: {err}")
 
-def send_data_CAN():  # Envoi des données via CAN
+def send_data_CAN():  # Envoi des données au VCU via CAN
     global n
     tempe = calc_temp()
     volt = calc_voltage()
@@ -247,7 +276,7 @@ if __name__ == "__main__":
 
             elif MODE == "CHARGE":
                 write_data()
-                if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
+                if ADC.convert_current(ADC.VALUE) >= MAX_CHARGE_CURRENT:
                     NO_PROBLEM[1] = 1
                     NO_PROBLEM_OUTPUT.off()
                 for current_ic in range(BMS.TOTAL_IC):

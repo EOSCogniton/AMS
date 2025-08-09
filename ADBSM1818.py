@@ -1,4 +1,4 @@
-### Fichier principal permettant la communication avec le processeur ADMBS1811
+### Fichier principal permettant la communication avec le processeur ADMBS1811 
 
 
 from ADBMS181x import *

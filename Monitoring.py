@@ -134,7 +134,8 @@ def send_charging_CAN():
     BYTE2 = voltage_charge_bin & 0xFF # Voltage Low byte
     BYTE3 = (current_charge_bin >> 8) & 0xFF # Current high byte
     BYTE4 = current_charge_bin & 0xFF
-    BYTE5 = 0 # Start charging
+    BYTE5 = int(0x00) # Start charging
+    BYTE6 = int(0x00) # Charging mode
     with can.Bus(channel="can1", interface="socketcan") as bus:
         msg = can.Message(
             arbitration_id=CHARGER_CANID,
@@ -143,7 +144,8 @@ def send_charging_CAN():
                 BYTE2,
                 BYTE3,
                 BYTE4,
-                BYTE5
+                BYTE5,
+                BYTE6
             ],
         )
         try:

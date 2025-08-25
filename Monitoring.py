@@ -2,8 +2,8 @@ import ADBSM1818 as BMS
 import ADC
 import can
 from read_temp import temp
+from read_temp import volt
 
-import math
 import gpiozero
 import time
 import datetime
@@ -30,7 +30,7 @@ UNDERVOLTAGE = 1  # V
 NOMINAL_VOLTAGE = 230 # V
 
 CHARGE_MAX_T = 47.5  # °C
-DISCHARGE_MAX_T = 16 #57.5  # °C
+DISCHARGE_MAX_T = 57.5 #57.5  # °C
 
 MAX_DISCHARGE_CURRENT = 95  # A
 MAX_CHARGE_CURRENT = 25 # A
@@ -46,14 +46,15 @@ n = 0
 
 
 def write_data():  # Fonction qui convertie les données en données binaires et les écrit dans les fichiers data.bin et actualdata.bin
-    data_raw = int(TIME * 1e8).to_bytes(8) + ADC.VALUE.to_bytes(2)
+    if(ADC.VALUE <= 0):
+        data_raw = int(TIME * 1e8).to_bytes(8) + (0).to_bytes(2)
+    else:
+        data_raw = int(TIME * 1e8).to_bytes(8) + ADC.VALUE.to_bytes(2)
     for k in range(BMS.TOTAL_IC):
         for i in range(MAX_CELL):
             data_raw += BMS.config.BMS_IC[k].cells.c_codes[i].to_bytes(2)
         for j in range(MAX_MUX_PIN):
             data_raw += BMS.config.BMS_IC[k].temp[j].to_bytes(2)
-            print(BMS.config.BMS_IC[k].temp[j])
-            print(math.floor(temp(BMS.config.BMS_IC[k].temp[j]/1000)*100)/100)
     data_raw += BMS.bin2int(NO_PROBLEM).to_bytes(len(NO_PROBLEM)//8)
     with open(PATH + "data/data.bin", "ab") as fileab:
         # data=bytearray(data_row)
@@ -212,69 +213,104 @@ if __name__ == "__main__":
     NO_PROBLEM_OUTPUT.on()  # On ferme le SDC
 
     TIMER = time.time()
-
-    #print(open_wire())
-    #print(time.time() - tps)
-    print(temp(29990))
-    print(temp(0))
+    
+    for i in range(MAX_MUX_PIN):
+        time1 = time.time()
+        BMS.select_mux_pin(i+1,READ_ENABLE)
+        time2 = time.time()
+        BMS.test_start_GPIO_mes(READ_ENABLE)
+        time3 = time.time()
+        BMS.read_GPIO_v(READ_ENABLE)
+        time4 = time.time()
+        store_temp(i - 1)
+    TIME = time.time()
+    write_data()
+    pbnow = 0
+    thermistor = 1
+    print("Nombre bms : " + str(BMS.TOTAL_IC))
     while ACTIVE:
         #try:
+            pbnow=0
             TIME = time.time()
             send_data_CAN()
-            BMS.select_mux_pin(MUX_PIN,READ_ENABLE)  # On sélectionne le capteur de température
+            #BMS.select_mux_pin(MUX_PIN,READ_ENABLE)  # On sélectionne le capteur de température
 
             openCircuit = open_wire()
             if(openCircuit):
                 print("Circuit ouvert")
                 NO_PROBLEM_OUTPUT.off()
+                pbnow =1
 
-            BMS.start_cell_GPIO12_mes(READ_ENABLE)  # On démarre la mesure des cellules et GPIO1 et 2
+            BMS.test_start_cell_mes()  # On démarre la mesure des cellules et GPIO1 et 2
             
             BMS.read_cell_v(READ_ENABLE)
-            BMS.read_GPIO_v(READ_ENABLE)
-            store_temp(MUX_PIN - 1)
-            if MUX_PIN < MAX_MUX_PIN:
+            #BMS.read_GPIO_v(READ_ENABLE)
+            #store_temp(MUX_PIN - 1)
+            #if MUX_PIN < MAX_MUX_PIN:
                 # On change de capteur de température à chaque itération
-                MUX_PIN += 1
+            #    MUX_PIN += 1
+            #else:
+            #    MUX_PIN = 1
+            if thermistor==1:
+                for i in range(MAX_MUX_PIN//2):
+                    BMS.select_mux_pin(i+1,READ_ENABLE)
+                    BMS.test_start_GPIO_mes(READ_ENABLE)
+                    BMS.read_GPIO_v(READ_ENABLE)
+                    store_temp(i - 1)
+                thermistor=0
             else:
-                MUX_PIN = 1
+                for i in range(MAX_MUX_PIN//2,MAX_MUX_PIN):
+                    BMS.select_mux_pin(i+1,READ_ENABLE)
+                    BMS.test_start_GPIO_mes(READ_ENABLE)
+                    BMS.read_GPIO_v(READ_ENABLE)
+                    store_temp(i - 1)
+                thermistor=1
+
             ADC.read_value()
+
             if MODE == "DISCHARGE":
                 write_data()
-                if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT:
+                if ADC.convert_current(ADC.VALUE) <= 0:
+                    NO_PROBLEM [1] = 1
+                    print("Current sensor disconnected")
+                    NO_PROBLEM_OUTPUT.off()
+                    pbnow =1
+                if ADC.convert_current(ADC.VALUE) >= MAX_DISCHARGE_CURRENT and ADC.convert_current(ADC.VALUE) >= 0:
                     NO_PROBLEM[1] = 1
                     print("Current error")
                     NO_PROBLEM_OUTPUT.off()
+                    pbnow =1
                 for current_ic in range(BMS.TOTAL_IC):
                     for cell in range(MAX_CELL):
                         # On teste pour voir s'il y a des problemes d'over/undervoltage et on modifie le code d'erreur en conséquence
-                        if (
-                            BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
-                            >= OVERVOLTAGE
-                        ):
+                        if (BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001>= OVERVOLTAGE   ):
                             NO_PROBLEM[current_ic * 64 + cell + 2] = 1
                             print("Overvoltage")
                             NO_PROBLEM_OUTPUT.off()
-                        elif (
-                            BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001
-                            <= UNDERVOLTAGE
-                        ):
+                            pbnow =1
+                        elif (BMS.config.BMS_IC[current_ic].cells.c_codes[cell] * 0.0001<= UNDERVOLTAGE):
                             NO_PROBLEM[current_ic * 64 + cell + 2] = 1
                             print("Undervoltage")
                             NO_PROBLEM_OUTPUT.off()
-                    print(temp(BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1]))
-                    if (
-                        temp(BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1])
-                        >= DISCHARGE_MAX_T and (BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1]) != 0
-                    ):
+                            pbnow =1
+                    for MUX_PIN in range(MAX_MUX_PIN):
+                        MUX_PIN+=1
+                        if (temp(BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1]*0.0001)>= DISCHARGE_MAX_T and BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1]!=0):
 
-                        NO_PROBLEM[current_ic * 64 + 16 + 2 + MUX_PIN-1] = 1
-                        print("Too hot")
-                        NO_PROBLEM_OUTPUT.off()
-                    
-                    if((BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1]))>29000:
-                        print("Temp sensor disconnected")
-
+                            NO_PROBLEM[current_ic * 64 + 16 + 2 + MUX_PIN-1] = 1
+                            print("Too hot")
+                            NO_PROBLEM_OUTPUT.off()
+                            pbnow =1
+                        if(BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1]==0):
+                            print("Thermistance "+ str(MUX_PIN) + " 0V")
+                        if((BMS.config.BMS_IC[current_ic].temp[MUX_PIN-1])>29000 and MUX_PIN >=9):
+                            print("Temp sensor disconnected")
+                            NO_PROBLEM[current_ic * 64 + 16 + 2 + MUX_PIN-1] = 1
+                            pbnow =1
+                            NO_PROBLEM_OUTPUT.off()
+                    print(time.time()-TIME)
+                    if not pbnow:
+                        NO_PROBLEM_OUTPUT.on()
 
             elif MODE == "CHARGE":
                 write_data()

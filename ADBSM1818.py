@@ -20,7 +20,7 @@ def hex2bin(hex):
 
 
 ##Paramètres
-TOTAL_IC = 1  # nombre de BMS en daisy chain
+TOTAL_IC = 2  # nombre de BMS en daisy chain
 
 ENABLED = 1
 DISABLED = 0
@@ -43,7 +43,7 @@ SEL_ALL_REG = REG_ALL  # Register Selection
 SEL_REG_A = REG_1  # Register Selection
 SEL_REG_B = REG_2  # Register Selection
 
-MEASUREMENT_LOOP_TIME = 200  # Loop Time in milliseconds (ms)
+MEASUREMENT_LOOP_TIME = 100  # Loop Time in milliseconds (ms)
 
 # Under Voltage and Over Voltage Thresholds
 OV_THRESHOLD = 41000  # Over voltage threshold ADC Code. LSB = 0.0001 ---(4.1V)
@@ -238,6 +238,16 @@ def start_cell_GPIO12_mes(enable_read=True):
     if enable_read:
         print_conv_time(conv_time)
 
+def test_start_cell_GPIO12_mes():
+    """Start Cell & GPIO 1,2 ADC Measurement"""
+    wakeup_sleep(TOTAL_IC)
+    ADMBS181x_adcvax(ADC_CONVERSION_MODE,ADC_DCP)
+
+def test_start_cell_mes():
+    """Start Cell ADC Measurement"""
+    wakeup_sleep(TOTAL_IC)
+    ADMBS181x_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT)
+
 
 def read_cell_v(enable_read=True):
     """Read Cell Voltage Registers"""
@@ -252,11 +262,17 @@ def read_cell_v(enable_read=True):
 def start_GPIO_mes(enable_read=True):
     """Start GPIO ADC Measurement"""
     wakeup_sleep(TOTAL_IC)
-
+    time1 = time.time()
     ADMBS181x_adax(ADC_CONVERSION_MODE, AUX_CH_TO_CONVERT)
+    print(time.time()-time1)
     conv_time = ADMBS181x_pollAdc()
+    print(time.time()-time1)
     if enable_read:
         print_conv_time(conv_time)
+
+def test_start_GPIO_mes(enable_read=True):
+    wakeup_sleep(TOTAL_IC)
+    ADMBS181x_adax(ADC_CONVERSION_MODE, AUX_CH_TO_CONVERT)
 
 
 def read_GPIO_v(enable_read=True):
@@ -349,6 +365,7 @@ def run_openwire_single(MAX_CELL):
     wakeup_idle(TOTAL_IC)
     error = ADMBS181x_rdcv(0, TOTAL_IC)
     check_error(error)
+    print("Error open wire ?")
 
     for cic in range(TOTAL_IC):
         for cell in range(N_CHANNELS):
@@ -371,6 +388,8 @@ def run_openwire_single(MAX_CELL):
     wakeup_idle(TOTAL_IC)
     error = ADMBS181x_rdcv(0, TOTAL_IC)
     check_error(error)
+    print("Error open wire ?")
+    
 
     for cic in range(TOTAL_IC):
         for cell in range(N_CHANNELS):
@@ -397,7 +416,6 @@ def run_openwire_single(MAX_CELL):
 
 
 def open_wire_check(max_cell):
-    time1 = time.time()
     # Réveil des composants si en veille
     wakeup_idle(TOTAL_IC)
 
@@ -411,23 +429,21 @@ def open_wire_check(max_cell):
     cmd += (int2bin(CELL_CH_ALL))[-3:]
     cmd_68(cmd)
 
-    time2 = time.time()
     
-
-    time3 = time.time()
-
+    ADMBS181x_pollAdc()
     #print(time2-time1)
     #print(time3-time1)
     #print("Envoi de ADOWUP 2/2")
     cmd_68(cmd)
-    ADMBS181x_pollAdc()
 
-    time4 = time.time()
+    ADMBS181x_pollAdc()
     start_cell_mes(False)
     read_cell_v(False)
     #print(time.time()-time4)
     # Lecture des tensions cellules après les deux ADOWUP
-    adowup_voltages = [[]*TOTAL_IC]
+    
+    adowup_voltages = [[] for _ in range(TOTAL_IC)]
+
     for current_ic in range(TOTAL_IC):
         for cell in range(max_cell):
             adowup_voltages[current_ic].append(config.BMS_IC[current_ic].cells.c_codes[cell]*0.0001)
@@ -440,12 +456,13 @@ def open_wire_check(max_cell):
     cmd.append(1)
     cmd += (int2bin(CELL_CH_ALL))[-3:]
     cmd_68(cmd)
+    #ADMBS181x_pollAdc()
     cmd_68(cmd)
     ADMBS181x_pollAdc()
     start_cell_mes(False)
     read_cell_v(False)
     # Lecture des tensions cellules après ADOWDOWN
-    adowdown_voltages = [[]*TOTAL_IC]
+    adowdown_voltages = [[] for _ in range(TOTAL_IC)]
     for current_ic in range(TOTAL_IC):
         for cell in range(max_cell):
             adowdown_voltages[current_ic].append(config.BMS_IC[current_ic].cells.c_codes[cell]*0.0001)
@@ -469,8 +486,7 @@ def open_wire_check(max_cell):
                     #print(f"IC {ic_index} Cellule {cell_index} suspectée déconnectée (ΔV = {diff})")
                     open = True
                 #else:
-                    #print(f"
-                    # {ic_index} Cellule {cell_index} OK (ΔV = {diff})")
+                    #print(f"{ic_index} Cellule {cell_index} OK (ΔV = {diff})")
     return open
 
 # Remove extra calls to start_cell_mes(), read_cell_v(), and unnecessary prints.
@@ -499,6 +515,7 @@ def write_byte_i2c_communication(data: List[int], enable_read=True):
     wakeup_idle(TOTAL_IC)
     error = ADMBS181x_rdcomm(TOTAL_IC)  # Read from comm register
     check_error(error)
+    print("Error I2C comm ?")
     if enable_read:
         print_rxcomm()  # Print received data into the comm register
 

@@ -489,7 +489,7 @@ def ADMBS181x_adcv(MD: int, DCP: int, CH: int):
     md_bits = (MD & 0x01) << 7
     cmd[1] = md_bits + 0x60 + (DCP << 4) + CH
     cmdbits = int2bin(cmd[0]) + int2bin(cmd[1])
-    print(cmdbits[5:])
+    #print(cmdbits[5:])
     cmd_68(cmdbits[5:])
 
 
@@ -775,6 +775,8 @@ def parse_cells(
         ic_pec[cell_reg - 1] = 1
     else:
         ic_pec[cell_reg - 1] = 0
+
+   
 
     return pec_error
 
